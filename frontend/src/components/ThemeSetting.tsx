@@ -21,9 +21,9 @@ export function ThemeSetting() {
   return (
     <div className="card bg-base-100 shadow border border-base-300">
       <div className="card-body gap-3">
-        <h2 className="card-title">Appearance</h2>
+        <h2 className="card-title">界面外观</h2>
         <p className="text-xs text-base-content/60">
-          Stored in this browser only — nothing is sent to the server, so another browser can differ.
+          主题偏好仅保存在当前浏览器，不会发送到服务器；其他浏览器的设置可以不同。
         </p>
         <div className="flex flex-col gap-1">
           {THEME_OPTIONS.map((o) => (
@@ -40,7 +40,7 @@ export function ThemeSetting() {
                 <span className="theme-label block text-sm">{o.label}</span>
                 <span className="block text-xs text-base-content/60">{o.description}</span>
               </span>
-              <span className="theme-check text-lg" role="img" aria-label="selected">
+              <span className="theme-check text-lg" role="img" aria-label="已选中">
                 ✓
               </span>
             </button>

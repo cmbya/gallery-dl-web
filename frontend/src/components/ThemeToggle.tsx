@@ -49,8 +49,8 @@ export function ThemeToggle() {
       <div
         tabIndex={0}
         role="button"
-        aria-label="Theme"
-        title="Theme"
+        aria-label="切换主题"
+        title="切换主题"
         className="btn btn-ghost btn-sm text-base"
       >
         <span className="theme-icon-light" aria-hidden="true">

@@ -27,7 +27,7 @@ export function ProfileGallery({ platform, name }: { platform: string; name: str
   async function onDelete() {
     if (
       !confirm(
-        `Delete profile "${name}" and all its files? This frees storage and cannot be undone.`,
+        `删除博主记录 "${name}" and all its files? This frees storage and cannot be undone.`,
       )
     )
       return;
@@ -42,7 +42,7 @@ export function ProfileGallery({ platform, name }: { platform: string; name: str
   }
 
   if (err) return <div className="alert alert-error">{err}</div>;
-  if (meta === null) return <p className="text-base-content/60">Loading…</p>;
+  if (meta === null) return <p className="text-base-content/60">正在加载…</p>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,31 +52,31 @@ export function ProfileGallery({ platform, name }: { platform: string; name: str
         </h1>
         <div className="flex gap-2">
           <a className="btn btn-primary btn-sm" href={profileZipUrl(platform, name)}>
-            ⬇ Download .zip
+            ⬇ 下载 ZIP
           </a>
           <button className="btn btn-error btn-sm" onClick={onDelete} disabled={busy}>
-            {busy ? "Deleting…" : "Delete profile"}
+            {busy ? "正在删除…" : "删除博主记录"}
           </button>
         </div>
       </div>
 
       <div className="stats stats-vertical sm:stats-horizontal shadow bg-base-200">
         <div className="stat">
-          <div className="stat-title">Images</div>
+          <div className="stat-title">图片</div>
           <div className="stat-value text-success">{meta.image_count}</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Videos</div>
+          <div className="stat-title">视频</div>
           <div className="stat-value">{meta.video_count}</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Size</div>
+          <div className="stat-title">大小</div>
           <div className="stat-value text-lg">{formatBytes(meta.total_bytes)}</div>
         </div>
       </div>
 
       {meta.images.length === 0 && meta.videos.length === 0 ? (
-        <p className="text-base-content/60">No media yet.</p>
+        <p className="text-base-content/60">暂无媒体文件。</p>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
           {meta.images.map((f) => (

@@ -28,13 +28,13 @@ export function CookieForm() {
       if (fb) body.fb_cookies_text = fb;
       const s = await updateCookies(body);
       setStatus(s);
-      setMsg({ kind: "ok", text: "Saved. Cookie values are never shown back." });
+      setMsg({ kind: "ok", text: "已保存。Cookie 内容不会再次显示。" });
       setIg("");
       setFb("");
     } catch (err) {
       setMsg({
         kind: "err",
-        text: err instanceof Error ? err.message : "Save failed",
+        text: err instanceof Error ? err.message : "保存失败",
       });
     } finally {
       setBusy(false);
@@ -47,12 +47,10 @@ export function CookieForm() {
         <div className="card-body gap-3">
           <div className="flex items-center justify-between">
             <h2 className="card-title">Instagram</h2>
-            {status?.has_ig && <span className="badge badge-success badge-sm">configured</span>}
+            {status?.has_ig && <span className="badge badge-success badge-sm">已配置</span>}
           </div>
           <p className="text-xs text-base-content/60">
-            Paste your <code>sessionid</code> cookie. gallery-dl disables password login, so a cookie
-            is required. In a desktop browser: DevTools → Application → Cookies → instagram.com →
-            copy <code>sessionid</code>.
+            请粘贴 <code>sessionid</code> Cookie。gallery-dl 不支持密码登录，因此需要 Cookie。在桌面浏览器中打开开发者工具：应用程序 → Cookie → instagram.com → 复制 <code>sessionid</code>.
           </p>
           <input
             type="password"
@@ -69,11 +67,10 @@ export function CookieForm() {
         <div className="card-body gap-3">
           <div className="flex items-center justify-between">
             <h2 className="card-title">Facebook</h2>
-            {status?.has_fb && <span className="badge badge-success badge-sm">configured</span>}
+            {status?.has_fb && <span className="badge badge-success badge-sm">已配置</span>}
           </div>
           <p className="text-xs text-base-content/60">
-            Paste a Netscape <code>cookies.txt</code> (export with a browser extension) or upload the
-            file. <strong>These cookies grant full account access — use a dedicated account.</strong>
+            请粘贴 Netscape 格式的 <code>cookies.txt</code> （可通过浏览器扩展导出），或上传文件。<strong>这些 Cookie 可完全访问账号，请使用专用账号。</strong>
           </p>
           <textarea
             className="textarea textarea-bordered w-full h-40 font-mono text-xs"
@@ -96,7 +93,7 @@ export function CookieForm() {
         </div>
       )}
       <button className="btn btn-primary self-start" onClick={save} disabled={busy}>
-        {busy ? "Saving…" : "Save cookies"}
+        {busy ? "正在保存…" : "保存 Cookie"}
       </button>
     </div>
   );

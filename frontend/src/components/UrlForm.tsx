@@ -15,8 +15,8 @@ export function UrlForm() {
   const [albums, setAlbums] = useState(false);
   const [quickUpdate, setQuickUpdate] = useState(false);
   const [quickLimit, setQuickLimit] = useState(20);
-  // "default" means send nothing and let the server's Settings decide.
-  const [pacingMode, setPacingMode] = useState<PacingMode | "default">("default");
+  // "默认" means send nothing and let the server's Settings decide.
+  const [pacingMode, setPacingMode] = useState<PacingMode | "默认">("默认");
   const [pacingMin, setPacingMin] = useState(1);
   const [pacingMax, setPacingMax] = useState(30);
   // null, not 0: the job layer saying nothing must inherit the server's per-image delay rather
@@ -49,7 +49,7 @@ export function UrlForm() {
     e.preventDefault();
     setError(null);
     if (!platform) {
-      setError("Enter an Instagram (instagram.com) or Facebook (facebook.com) URL.");
+      setError("请输入 Instagram（instagram.com）或 Facebook（facebook.com）链接。");
       return;
     }
     setBusy(true);
@@ -65,7 +65,7 @@ export function UrlForm() {
         if (quickUpdate) options["quick_update"] = quickLimit;
       }
       // Omitted entirely unless overridden, so the server's Settings stay in charge.
-      if (pacingMode !== "default") {
+      if (pacingMode !== "默认") {
         options["pacing"] = {
           mode: pacingMode,
           min: pacingMin,
@@ -81,7 +81,7 @@ export function UrlForm() {
       const { job_id } = await createJob(url, platform, options);
       router.push(`/jobs/${job_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start download");
+      setError(err instanceof Error ? err.message : "创建下载任务失败");
       setBusy(false);
     }
   }
@@ -89,10 +89,10 @@ export function UrlForm() {
   return (
     <form onSubmit={onSubmit} className="card bg-base-100 shadow-xl border border-base-300">
       <div className="card-body gap-4">
-        <h2 className="card-title">Download from a URL</h2>
+        <h2 className="card-title">通过链接下载</h2>
         <label className="form-control">
           <div className="label">
-            <span className="label-text">Instagram or Facebook URL</span>
+            <span className="label-text">Instagram 或 Facebook 链接</span>
           </div>
           <input
             type="url"
@@ -115,14 +115,14 @@ export function UrlForm() {
               checked={anonymous}
               onChange={(e) => setAnonymous(e.target.checked)}
             />
-            <span className="label-text">Anonymous — don&apos;t use my cookies</span>
+            <span className="label-text">匿名下载（不使用我的 Cookie）</span>
           </label>
           <p className="pl-9 text-xs text-base-content/60">
             {anonymous
-              ? "Public profiles only. Instagram stories, highlights and saved posts are skipped, and Instagram is less reliable logged-out than Facebook."
+              ? "仅支持公开主页。匿名访问时不会下载 Instagram 快拍、精选内容和收藏帖子；且 Instagram 匿名访问通常不如 Facebook 稳定。"
               : willFallBack
-                ? `No ${platform === "instagram" ? "Instagram" : "Facebook"} cookies stored — this job will run anonymously (public content only).`
-                : "Leave off to use the cookies stored in Settings. Tick it to spare that session on a public profile."}
+                ? `未保存 ${platform === "instagram" ? "Instagram" : "Facebook"} Cookie；此任务将以匿名方式运行（仅限公开内容）。`
+                : "不勾选则使用“设置”中保存的 Cookie。下载公开主页时可勾选匿名模式，避免使用登录会话。"}
           </p>
         </div>
 
@@ -132,7 +132,7 @@ export function UrlForm() {
             checked={showAdvanced}
             onChange={(e) => setShowAdvanced(e.target.checked)}
           />
-          <div className="collapse-title font-medium">Advanced options for this job</div>
+          <div className="collapse-title font-medium">此任务的高级选项</div>
           <div className="collapse-content flex flex-col gap-3 pt-2">
             {platform === "instagram" && (
               <>
@@ -154,7 +154,7 @@ export function UrlForm() {
                     checked={videos}
                     onChange={(e) => setVideos(e.target.checked)}
                   />
-                  <span className="label-text">Download videos</span>
+                  <span className="label-text">下载视频</span>
                 </label>
               </>
             )}
@@ -169,12 +169,10 @@ export function UrlForm() {
                       checked={albums}
                       onChange={(e) => setAlbums(e.target.checked)}
                     />
-                    <span className="label-text">Also walk albums</span>
+                    <span className="label-text">同时遍历相册</span>
                   </label>
                   <p className="pl-9 text-xs text-base-content/60">
-                    Roughly doubles the time for very few extra files: an album re-fetches photo
-                    pages the main walk already covered, and Facebook only knows a photo is already
-                    downloaded <em>after</em> fetching its page.
+                    耗时可能接近翻倍，但额外文件通常很少：遍历相册会重复获取主页已查过的照片页面；Facebook 只有获取页面后才能判断照片是否已下载。
                   </p>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -185,7 +183,7 @@ export function UrlForm() {
                       checked={quickUpdate}
                       onChange={(e) => setQuickUpdate(e.target.checked)}
                     />
-                    <span className="label-text">Quick update — stop after</span>
+                    <span className="label-text">快速更新——遇到已下载文件后停止</span>
                     <input
                       type="number"
                       min={1}
@@ -194,34 +192,32 @@ export function UrlForm() {
                       disabled={!quickUpdate}
                       onChange={(e) => setQuickLimit(Number(e.target.value))}
                     />
-                    <span className="label-text">already-downloaded files</span>
+                    <span className="label-text">个已下载文件</span>
                   </label>
                   <p className="pl-9 text-xs text-base-content/60">
-                    Facebook lists newest first, so a refresh reaches the new photos immediately and
-                    then re-fetches every old page just to skip it. Leave this off if a previous run
-                    was interrupted — it would stop before reaching the part you never got.
+                    Facebook 按时间从新到旧排列，因此更新时能很快找到新照片，然后会重新读取旧页面并跳过已下载内容。如果上次任务中断，请不要启用此选项，否则可能还没到上次中断的位置就停止。
                   </p>
                 </div>
               </>
             )}
 
             <div className="flex flex-col gap-2">
-              <span className="label-text">Pacing for this job</span>
+              <span className="label-text">此任务的请求间隔</span>
               <div className="flex flex-wrap items-center gap-3">
                 <select
                   className="select select-bordered select-sm"
                   value={pacingMode}
-                  onChange={(e) => setPacingMode(e.target.value as PacingMode | "default")}
+                  onChange={(e) => setPacingMode(e.target.value as PacingMode | "默认")}
                 >
-                  <option value="default">Server default</option>
-                  <option value="adaptive">Adaptive</option>
-                  <option value="fixed">Fixed</option>
+                  <option value="默认">使用服务器默认值</option>
+                  <option value="adaptive">自适应</option>
+                  <option value="fixed">固定</option>
                 </select>
-                {pacingMode !== "default" && (
+                {pacingMode !== "默认" && (
                   <>
                     <label className="flex items-center gap-2">
                       <span className="label-text text-xs">
-                        {pacingMode === "adaptive" ? "Floor (s)" : "Min (s)"}
+                        {pacingMode === "adaptive" ? "最小间隔（秒）" : "最小间隔（秒）"}
                       </span>
                       <input
                         type="number"
@@ -234,7 +230,7 @@ export function UrlForm() {
                     </label>
                     <label className="flex items-center gap-2">
                       <span className="label-text text-xs">
-                        {pacingMode === "adaptive" ? "Ceiling (s)" : "Max (s)"}
+                        {pacingMode === "adaptive" ? "最大间隔（秒）" : "最大间隔（秒）"}
                       </span>
                       <input
                         type="number"
@@ -246,12 +242,12 @@ export function UrlForm() {
                       />
                     </label>
                     <label className="flex items-center gap-2">
-                      <span className="label-text text-xs">Per image (s)</span>
+                      <span className="label-text text-xs">每张图片间隔（秒）</span>
                       <input
                         type="number"
                         min={0}
                         step="0.5"
-                        placeholder="default"
+                        placeholder="默认"
                         className="input input-bordered input-sm w-24"
                         value={pacingPerFile ?? ""}
                         onChange={(e) =>
@@ -263,9 +259,9 @@ export function UrlForm() {
                 )}
               </div>
               <p className="text-xs text-base-content/60">
-                Adaptive starts at the floor and backs off only when the platform pushes back.
+                自适应 starts at the floor and backs off only when the platform pushes back.
                 Per image is a separate axis and applies in both modes; leave it blank to keep the
-                server&apos;s value. Change the default for every job in{" "}
+                server&apos;s value. Change the 默认 for every job in{" "}
                 <a className="link" href="/settings">
                   Settings
                 </a>
@@ -277,11 +273,11 @@ export function UrlForm() {
 
         <div className="card-actions justify-end">
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? "Starting…" : "Download"}
+            {busy ? "正在创建…" : "开始下载"}
           </button>
         </div>
         <p className="text-xs text-base-content/60">
-          Cookies are optional — without them, public profiles still download. Add them in{" "}
+          Cookie 非必需；不设置也可以下载公开主页。可在“设置”中添加{" "}
           <a className="link" href="/settings">
             Settings
           </a>{" "}

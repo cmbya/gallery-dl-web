@@ -8,21 +8,21 @@ import { JOB_EVENT_TYPES, type JobEvent } from "@/lib/events";
 function describe(ev: JobEvent): string {
   switch (ev.type) {
     case "queued":
-      return "Queued";
+      return "排队中";
     case "started":
-      return "Started";
+      return "已开始";
     case "prepare":
-      return `Fetching ${ev.filename ?? "…"}`;
+      return `正在获取 ${ev.filename ?? "…"}`;
     case "file":
-      return `${ev.event === "skipped" ? "↷ skipped" : "✓ downloaded"} ${ev.filename ?? ""}${
+      return `${ev.event === "skipped" ? "↷ 已跳过" : "✓ 已下载"} ${ev.filename ?? ""}${
         ev.bytes ? ` (${ev.bytes} B)` : ""
       }`;
     case "progress":
-      return `progress: ${ev.downloaded ?? 0} downloaded, ${ev.skipped ?? 0} skipped, ${
+      return `进度：已下载 ${ev.downloaded ?? 0}，已跳过 ${ev.skipped ?? 0}，失败 ${
         ev.failed ?? 0
-      } failed`;
+      } 项`;
     case "heartbeat":
-      return `· still working (${Math.round(ev.elapsed ?? 0)}s)`;
+      return `· 仍在运行（${Math.round(ev.elapsed ?? 0)} 秒）`;
     case "pacing":
       return `${PACING_ROUTINE.includes(ev.reason ?? "") ? "⏱" : "🐢"} pacing ${
         ev.previous ?? 0
@@ -36,7 +36,7 @@ function describe(ev: JobEvent): string {
     case "pacing-telemetry":
       // Non-terminal: the manager killed the worker, and it flushed its request record on the way
       // out so the run can be diagnosed without repeating it.
-      return `🔍 saved the last ${ev.pacing_telemetry?.length ?? 0} request(s) for diagnosis`;
+      return `🔍 已保存最近 ${ev.pacing_telemetry?.length ?? 0} 条请求记录供排查`;
     case "stalled":
       return ev.phase === "warmup"
         ? `⏳ no files yet after ${Math.round(ev.threshold ?? 0)}s (attempt ${ev.attempt ?? 1})`
@@ -46,19 +46,19 @@ function describe(ev: JobEvent): string {
     case "retrying":
       return `↻ retrying (attempt ${ev.attempt ?? 1})`;
     case "paused":
-      return "⏸ Paused — worker suspended, queue slot released";
+      return "⏸ 已暂停——下载进程已挂起，已释放队列名额";
     case "resumed":
-      return `▶ Resumed after ${Math.round(ev.paused_for ?? 0)}s`;
+      return `▶ 已继续（暂停 ${Math.round(ev.paused_for ?? 0)} 秒）`;
     case "error":
       return `${ev.fatal ? "⛔ " : "⚠ "}${ev.message ?? ev.kind ?? "error"}`;
     case "completed":
-      return `Completed — ${ev.downloaded ?? 0} file(s)`;
+      return `已完成——下载 ${ev.downloaded ?? 0} 个文件`;
     case "cancelled":
-      return `⏹ Stopped — ${ev.downloaded ?? 0} file(s) kept`;
+      return `⏹ 已停止——保留已下载的 ${ev.downloaded ?? 0} 个文件`;
     case "failed":
       return ev.reason === "rate-limited"
-        ? "⏸ Stopped — the platform rate-limited this account"
-        : `Failed — ${ev.reason ?? "unknown"}`;
+        ? "⏸ 已停止——平台限制了此账号的请求频率"
+        : `任务失败——${ev.reason ?? "原因未知"}`;
     default:
       return ev.type;
   }
@@ -75,7 +75,7 @@ function StatusBadge({ status }: { status: string }) {
     failed: "badge-error",
     cancelled: "badge-ghost",
   };
-  return <span className={`badge ${map[status] ?? "badge-ghost"}`}>{status}</span>;
+  return <span className={`badge ${map[status] ?? "badge-ghost"}`}>{({ connecting: "连接中", queued: "排队中", running: "下载中", started: "已开始", paused: "已暂停", completed: "已完成", failed: "失败", cancelled: "已停止" }[status] ?? status)}</span>;
 }
 
 /** Pacing reasons that are the controller working normally, not the platform pushing back. */
@@ -128,8 +128,8 @@ export function JobProgress({ jobId }: { jobId: string }) {
       if (ev.type === "stalled") {
         setStall(
           ev.phase === "warmup"
-            ? "Still no files — the profile may be large, restricted, or throttled. Retrying…"
-            : "Stalled — no progress; retrying…",
+            ? "尚未发现文件：主页可能较大、受限或请求被限流。正在重试…"
+            : "任务停滞、没有进度，正在重试…",
         );
       } else if (ev.type === "retrying") {
         setStall(`Retrying (attempt ${ev.attempt ?? 1})…`);
@@ -182,7 +182,7 @@ export function JobProgress({ jobId }: { jobId: string }) {
       <div className="card bg-base-100 shadow-xl border border-base-300">
         <div className="card-body gap-3">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="card-title truncate">Job {jobId.slice(0, 12)}…</h2>
+            <h2 className="card-title truncate">任务 {jobId.slice(0, 12)}…</h2>
             <div className="flex items-center gap-2">
               {pacing !== null && !TERMINAL_STATUSES.includes(status) && (
                 <span
@@ -191,8 +191,8 @@ export function JobProgress({ jobId }: { jobId: string }) {
                   }`}
                   title={
                     PACING_ROUTINE.includes(pacing.reason ?? "")
-                      ? "Current delay between requests"
-                      : `Backed off — the platform pushed back (${pacing.reason})`
+                      ? "当前请求间隔"
+                      : `平台限制请求，已自动延长间隔 (${pacing.reason})`
                   }
                 >
                   ⏱ {pacing.delay}s
@@ -215,21 +215,21 @@ export function JobProgress({ jobId }: { jobId: string }) {
           )}
           <div className="stats stats-vertical sm:stats-horizontal shadow bg-base-200">
             <div className="stat">
-              <div className="stat-title">Downloaded</div>
+              <div className="stat-title">已下载</div>
               <div className="stat-value text-success">{counts.downloaded}</div>
             </div>
             <div className="stat">
-              <div className="stat-title">Skipped</div>
+              <div className="stat-title">已跳过</div>
               <div className="stat-value">{counts.skipped}</div>
             </div>
             <div className="stat">
-              <div className="stat-title">Failed</div>
+              <div className="stat-title">失败</div>
               <div className="stat-value text-error">{counts.failed}</div>
             </div>
           </div>
           {status === "paused" && (
             <div className="alert alert-warning flex-col items-start gap-1 py-2 text-sm">
-              <span className="font-semibold">⏸ Paused — the worker is suspended.</span>
+              <span className="font-semibold">⏸ 已暂停——下载进程已挂起。</span>
               <span>
                 It keeps its place in the profile, so resuming continues from here instead of
                 starting the walk over. Its queue slot has been freed for another profile. A very
@@ -243,23 +243,23 @@ export function JobProgress({ jobId }: { jobId: string }) {
           )}
           {status === "queued" && summary?.started_at != null && (
             <div className="alert alert-info py-2 text-sm">
-              Resuming — waiting for a free download slot.
+              正在恢复——等待空闲下载名额。
             </div>
           )}
           {!terminal && status !== "paused" && !stall && alive !== null && counts.downloaded + counts.skipped === 0 && (
             <div className="alert alert-info py-2 text-sm">
-              Looking through the profile… ({Math.round(alive)}s). Large or rate-limited profiles
+              正在读取博主主页… ({Math.round(alive)}s). Large or rate-limited profiles
               can take several minutes before the first file appears.
             </div>
           )}
           {terminal && status !== "failed" && counts.downloaded > 0 && (
             <a className="btn btn-primary btn-sm self-start" href={jobZipUrl(jobId)}>
-              ⬇ Download all (.zip)
+              ⬇ 下载全部文件（.zip）
             </a>
           )}
           {status === "cancelled" && (
             <div className="alert flex-col items-start gap-1 py-2 text-sm">
-              <span className="font-semibold">⏹ Stopped.</span>
+              <span className="font-semibold">⏹ 已停止。</span>
               <span>
                 {counts.downloaded} file(s) downloaded before you stopped were kept, and this
                 profile&apos;s gallery has been updated. Re-running it skips them and continues.
@@ -289,7 +289,7 @@ export function JobProgress({ jobId }: { jobId: string }) {
                   </span>
                   <span>
                     <a className="link" href="/settings">
-                      Open Settings
+                      打开设置
                     </a>{" "}
                     to add or refresh cookies for this platform.
                   </span>
@@ -302,7 +302,7 @@ export function JobProgress({ jobId }: { jobId: string }) {
                 </>
               ) : finalReason.reason === "rate-limited" ? (
                 <>
-                  <span className="font-semibold">⏸ Paused by the platform, not an error.</span>
+                  <span className="font-semibold">⏸ 平台限制了请求频率，并非应用错误。</span>
                   <span>{String(finalReason.message ?? "")}</span>
                   {counts.downloaded + counts.skipped > 0 && (
                     <span className="opacity-80">
@@ -312,13 +312,13 @@ export function JobProgress({ jobId }: { jobId: string }) {
                   )}
                   {finalReason.resume_url && (
                     <span className="break-all font-mono text-xs opacity-80">
-                      Resume point: {finalReason.resume_url}
+                      续传位置： {finalReason.resume_url}
                     </span>
                   )}
                 </>
               ) : finalReason.reason === "downloads-dir-unwritable" ? (
                 <>
-                  <span className="font-semibold">Downloads folder is not writable.</span>
+                  <span className="font-semibold">下载目录没有写入权限。</span>
                   <span className="whitespace-pre-wrap break-all font-mono text-xs">
                     {String(finalReason.message ?? "")}
                   </span>
@@ -326,7 +326,7 @@ export function JobProgress({ jobId }: { jobId: string }) {
               ) : finalReason.reason === "no-progress" ? (
                 <>
                   <span className="font-semibold">
-                    No files were found before the timeout.
+                    超时前未找到文件。
                   </span>
                   <span className="whitespace-pre-wrap break-all font-mono text-xs">
                     {String(finalReason.message ?? "")}
@@ -344,7 +344,7 @@ export function JobProgress({ jobId }: { jobId: string }) {
 
       <div className="card bg-base-100 shadow border border-base-300">
         <div className="card-body">
-          <h3 className="font-semibold">Activity</h3>
+          <h3 className="font-semibold">任务动态</h3>
           <ul className="flex flex-col gap-1 max-h-96 overflow-y-auto font-mono text-xs">
             {events.map((ev, i) => (
               <li key={i} className="text-base-content/80">

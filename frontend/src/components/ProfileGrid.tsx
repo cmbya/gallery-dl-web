@@ -16,11 +16,11 @@ export function ProfileGrid() {
   }, []);
 
   if (err) return <div className="alert alert-error">{err}</div>;
-  if (profiles === null) return <p className="text-base-content/60">Loading…</p>;
+  if (profiles === null) return <p className="text-base-content/60">正在加载…</p>;
   if (profiles.length === 0)
     return (
       <p className="text-base-content/60">
-        No profiles yet. Download an Instagram or Facebook profile URL to get started.
+        还没有博主记录。提交 Instagram 或 Facebook 主页链接开始下载。
       </p>
     );
 

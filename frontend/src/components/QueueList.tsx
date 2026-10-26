@@ -38,9 +38,10 @@ function title(job: JobSummary): string {
 /** Reason text for a terminal job, pulled out of the backend's final_summary. */
 function outcome(job: JobSummary): string {
   const final = (job.final_summary ?? {}) as { reason?: string };
-  if (job.status === "completed") return `${job.downloaded} downloaded, ${job.skipped} skipped`;
-  if (job.status === "cancelled") return "stopped by you";
-  return final.reason ?? "failed";
+  if (job.status === "completed") return `${job.downloaded} 已下载，${job.skipped} 已跳过`;
+  if (job.status === "cancelled") return "已手动停止";
+  const reasons: Record<string, string> = { "rate-limited": "平台触发频率限制", "login-required": "需要登录 Cookie", "downloads-dir-unwritable": "下载目录无写入权限", "no-progress": "超时前未发现文件", "worker-crash": "下载进程异常退出", "cancelled": "已停止" };
+  return reasons[final.reason ?? ""] ?? final.reason ?? "失败";
 }
 
 function JobRow({
@@ -65,21 +66,21 @@ function JobRow({
           <span className="truncate">{title(job)}</span>
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-base-content/70">
-          <span className={`badge badge-sm ${statusBadge(job.status)}`}>{job.status}</span>
+          <span className={`badge badge-sm ${statusBadge(job.status)}`}>{({ queued: "排队中", running: "下载中", paused: "已暂停", completed: "已完成", failed: "失败", cancelled: "已停止" }[job.status] ?? job.status)}</span>
           {/* Two jobs that ran with and without a session behave very differently; without this
               they are indistinguishable in the queue. */}
           {job.anonymous && (
-            <span className="badge badge-ghost badge-sm" title="Ran logged-out — public content only">
-              anonymous
+            <span className="badge badge-ghost badge-sm" title="匿名模式：仅限公开内容">
+              匿名
             </span>
           )}
           {job.status === "queued" && !resuming && (
             <span>
-              waiting
-              {waitingAhead ? ` — ${waitingAhead} ahead` : " for a free slot"}
+              等待中
+              {waitingAhead ? ` — ${waitingAhead} 个任务排在前面` : " 等待空闲下载名额"}
             </span>
           )}
-          {resuming && <span>resuming — waiting for a free slot</span>}
+          {resuming && <span>恢复中——等待空闲下载名额</span>}
           <span className="font-mono">
             {job.downloaded} ✓ · {job.skipped} ↷
           </span>
@@ -118,7 +119,7 @@ export function QueueList() {
   }, [refresh]);
 
   if (error && jobs === null) return <div className="alert alert-error py-2 text-sm">{error}</div>;
-  if (jobs === null) return <p className="text-base-content/60">Loading…</p>;
+  if (jobs === null) return <p className="text-base-content/60">正在加载…</p>;
 
   const active = jobs.filter((j) => !["completed", "failed", "cancelled"].includes(j.status));
   const recent = jobs.filter((j) => ["completed", "failed", "cancelled"].includes(j.status));
@@ -133,15 +134,15 @@ export function QueueList() {
       <div className="card border border-base-300 bg-base-100 shadow">
         <div className="card-body gap-2 p-0">
           <h2 className="px-4 pt-4 font-semibold">
-            Active <span className="text-base-content/60">({active.length})</span>
+            进行中 <span className="text-base-content/60">({active.length})</span>
           </h2>
           {active.length === 0 ? (
             <p className="px-4 pb-4 text-sm text-base-content/60">
-              Nothing downloading right now.{" "}
+              当前没有正在下载的任务。{" "}
               <Link className="link" href="/">
-                Start a download
+                开始下载
               </Link>
-              .
+              。
             </p>
           ) : (
             <ul className="flex flex-col">
@@ -161,7 +162,7 @@ export function QueueList() {
       {recent.length > 0 && (
         <div className="card border border-base-300 bg-base-100 shadow">
           <div className="card-body gap-2 p-0">
-            <h2 className="px-4 pt-4 font-semibold">Recent</h2>
+            <h2 className="px-4 pt-4 font-semibold">最近任务</h2>
             <ul className="flex flex-col">
               {recent.map((job) => (
                 <li
@@ -177,12 +178,12 @@ export function QueueList() {
                   {job.anonymous && (
                     <span
                       className="badge badge-ghost badge-sm"
-                      title="Ran logged-out — public content only"
+                      title="匿名模式：仅限公开内容"
                     >
-                      anonymous
+                      匿名
                     </span>
                   )}
-                  <span className={`badge badge-sm ${statusBadge(job.status)}`}>{job.status}</span>
+                  <span className={`badge badge-sm ${statusBadge(job.status)}`}>{({ queued: "排队中", running: "下载中", paused: "已暂停", completed: "已完成", failed: "失败", cancelled: "已停止" }[job.status] ?? job.status)}</span>
                   <span className="text-xs text-base-content/60">{outcome(job)}</span>
                 </li>
               ))}
@@ -192,8 +193,7 @@ export function QueueList() {
       )}
 
       <p className="text-xs text-base-content/60">
-        Jobs are held in memory — restarting the backend clears this list and stops any download in
-        flight. Re-running a profile skips whatever is already on disk.
+        任务列表保存在内存中：重启后会清空并停止正在运行的任务。重新下载同一博主时，会跳过磁盘上已有的文件。
       </p>
     </div>
   );

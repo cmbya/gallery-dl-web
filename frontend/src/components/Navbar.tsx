@@ -6,11 +6,11 @@ import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 const links = [
-  { href: "/", label: "Download" },
-  { href: "/queue", label: "Queue" },
-  { href: "/profiles", label: "Profiles" },
-  { href: "/downloads", label: "Downloads" },
-  { href: "/settings", label: "Settings" },
+  { href: "/", label: "下载" },
+  { href: "/queue", label: "任务队列" },
+  { href: "/profiles", label: "博主图库" },
+  { href: "/downloads", label: "下载文件" },
+  { href: "/settings", label: "设置" },
 ];
 
 export function Navbar() {

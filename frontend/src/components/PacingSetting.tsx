@@ -66,9 +66,9 @@ export function PacingSetting() {
       const s = await updatePacing(platform, pacing);
       setStatus(s.pacing);
       setDraft({ ...draft, [platform]: undefined });
-      setMsg({ kind: "ok", text: "Saved — applies to the next job you start." });
+      setMsg({ kind: "ok", text: "已保存，将应用于下一个新任务。" });
     } catch (err) {
-      setMsg({ kind: "err", text: err instanceof Error ? err.message : "Save failed" });
+      setMsg({ kind: "err", text: err instanceof Error ? err.message : "保存失败" });
     } finally {
       setBusy(null);
     }
@@ -77,16 +77,16 @@ export function PacingSetting() {
   return (
     <div className="card bg-base-100 shadow border border-base-300">
       <div className="card-body gap-4">
-        <h2 className="card-title">Download pacing</h2>
+        <h2 className="card-title">下载请求间隔</h2>
         <p className="text-xs text-base-content/60">
-          Both platforms rate-limit scraping. In <strong>Adaptive</strong> mode a run starts at the
+          两个平台都会限制抓取频率。 In <strong>自适应</strong> mode a run starts at the
           floor and only slows down when the platform pushes back, then speeds back up — and the
           floor rises on its own as a run gets long, since that is when a block actually happens.
-          Choose <strong>Fixed</strong> to sleep a random amount in the range on every request
+          Choose <strong>固定</strong> to sleep a random amount in the range on every request
           instead.
         </p>
         <p className="text-xs text-base-content/60">
-          <strong>Seconds per image</strong> is a separate control and works in both modes. The
+          <strong>每张图片间隔（秒）</strong> is a separate control and works in both modes. The
           settings above space the <em>requests</em> that list posts; one Instagram request returns
           about 30 posts, whose images then download back to back with nothing between them. This
           puts a floor under that burst, jittered slightly so the gaps are not perfectly regular.
@@ -103,28 +103,28 @@ export function PacingSetting() {
             <div key={id} className="rounded-box border border-base-300 p-3 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <span className="font-medium">{label}</span>
-                {live?.overridden && <span className="badge badge-sm">custom</span>}
+                {live?.overridden && <span className="badge badge-sm">自定义</span>}
               </div>
               <p className="text-xs text-base-content/60">{hint}</p>
 
               <div className="flex flex-wrap items-end gap-3">
                 <label className="form-control">
                   <div className="label py-1">
-                    <span className="label-text text-xs">Mode</span>
+                    <span className="label-text text-xs">模式</span>
                   </div>
                   <select
                     className="select select-bordered select-sm"
                     value={value.mode}
                     onChange={(e) => edit(id, { mode: e.target.value as Pacing["mode"] })}
                   >
-                    <option value="adaptive">Adaptive</option>
-                    <option value="fixed">Fixed</option>
+                    <option value="adaptive">自适应</option>
+                    <option value="fixed">固定</option>
                   </select>
                 </label>
                 <label className="form-control">
                   <div className="label py-1">
                     <span className="label-text text-xs">
-                      {value.mode === "adaptive" ? "Floor (s)" : "Min (s)"}
+                      {value.mode === "adaptive" ? "最小间隔（秒）" : "最小间隔（秒）"}
                     </span>
                   </div>
                   <input
@@ -139,7 +139,7 @@ export function PacingSetting() {
                 <label className="form-control">
                   <div className="label py-1">
                     <span className="label-text text-xs">
-                      {value.mode === "adaptive" ? "Ceiling (s)" : "Max (s)"}
+                      {value.mode === "adaptive" ? "最大间隔（秒）" : "最大间隔（秒）"}
                     </span>
                   </div>
                   <input
@@ -153,7 +153,7 @@ export function PacingSetting() {
                 </label>
                 <label className="form-control">
                   <div className="label py-1">
-                    <span className="label-text text-xs">Seconds per image</span>
+                    <span className="label-text text-xs">每张图片间隔（秒）</span>
                   </div>
                   <input
                     type="number"
@@ -169,7 +169,7 @@ export function PacingSetting() {
                   disabled={busy === id || !dirty}
                   onClick={() => save(id, value)}
                 >
-                  {busy === id ? "Saving…" : "Save"}
+                  {busy === id ? "正在保存…" : "Save"}
                 </button>
                 {live?.overridden && (
                   <button
@@ -177,7 +177,7 @@ export function PacingSetting() {
                     disabled={busy === id}
                     onClick={() => save(id, null)}
                   >
-                    Reset to default
+                    恢复默认值
                   </button>
                 )}
               </div>

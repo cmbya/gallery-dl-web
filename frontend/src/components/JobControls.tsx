@@ -48,15 +48,15 @@ export function JobControls({
       <div className="flex flex-wrap gap-1">
         {paused ? (
           <button className={`${btn} btn-primary`} disabled={!!busy} onClick={() => run("resume")}>
-            ▶ Resume
+            ▶ 继续
           </button>
         ) : (
           <button className={`${btn} btn-ghost`} disabled={!!busy} onClick={() => run("pause")}>
-            ⏸ Pause
+            ⏸ 暂停
           </button>
         )}
         <button className={`${btn} btn-ghost text-error`} disabled={!!busy} onClick={() => run("cancel")}>
-          ⏹ Stop
+          ⏹ 停止
         </button>
       </div>
       {error && <span className="text-xs text-error">{error}</span>}

@@ -5,45 +5,40 @@ import { ThemeSetting } from "@/components/ThemeSetting";
 export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <h1 className="text-2xl font-bold">设置</h1>
       <p className="text-sm text-base-content/70">
-        Credentials are stored only in the backend&apos;s <code>/data/cookies.json</code> (mode 0600,
-        gitignored). They are never returned over the API — only whether each is set.
+        登录凭证仅保存在后端的 <code>/data/cookies.json</code>（权限为 0600，且已加入 Git 忽略）。API 不会返回 Cookie 内容，只会显示是否已配置。
       </p>
       <p className="text-sm text-base-content/70">
-        Cookies are <b>optional</b>: with none stored, a job runs anonymously and downloads from
-        public profiles. Add them to reach private or restricted content, and for more reliable
-        Instagram results — logged-out, Instagram skips stories, highlights and saved posts.
+        Cookie <b>非必需</b>：未保存 Cookie 时，任务会以匿名方式下载公开主页内容。需要访问私密或受限内容，或希望 Instagram 下载更稳定时，再添加 Cookie。匿名访问时 Instagram 不会下载快拍、精选内容和收藏帖子。
       </p>
 
       <div className="alert alert-info flex flex-col items-start gap-2 py-3">
-        <div className="font-semibold">📷 Easiest: use the browser extension</div>
+        <div className="font-semibold">📷 最简单的方式：使用浏览器扩展</div>
         <div className="text-sm">
-          Load the <code>extension/</code> folder unpacked (Chrome / Edge / Brave), set this
-          server&apos;s URL in the popup, then click <b>Send Instagram session</b> /{" "}
-          <b>Send Facebook cookies</b> while logged in. It reads your own cookies and sends them here
-          — one click, refreshable. See{" "}
+          在 Chrome / Edge / Brave 中加载未打包的 <code>extension/</code> 文件夹，在扩展弹窗中填入本服务地址，然后在登录状态下点击 <b>发送 Instagram 会话</b> /{" "}
+          <b>发送 Facebook Cookie</b>。扩展会读取你自己的 Cookie 并发送到此处——一键导入，之后也可刷新。详见{" "}
           <a
             className="link"
-            href="https://github.com/lumduan/gallery-dl-web/blob/main/extension/README.md"
+            href="https://github.com/lumduan/gallery-dl-web/blob/main/扩展安装说明"
             target="_blank"
             rel="noreferrer"
           >
-            extension/README.md
+            扩展安装说明
           </a>
           .
         </div>
       </div>
 
-      <div className="divider text-xs text-base-content/50">or paste manually</div>
+      <div className="divider text-xs text-base-content/50">或在下方手动粘贴</div>
 
       <CookieForm />
 
-      <div className="divider text-xs text-base-content/50">downloads</div>
+      <div className="divider text-xs text-base-content/50">下载节奏</div>
 
       <PacingSetting />
 
-      <div className="divider text-xs text-base-content/50">appearance</div>
+      <div className="divider text-xs text-base-content/50">界面外观</div>
 
       <ThemeSetting />
     </div>

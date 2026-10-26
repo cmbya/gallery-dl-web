@@ -21,16 +21,16 @@ export function FileList() {
   }, []);
 
   if (err) return <div className="alert alert-error">{err}</div>;
-  if (data === null) return <p className="text-base-content/60">Loading…</p>;
+  if (data === null) return <p className="text-base-content/60">正在加载…</p>;
   const files = data.files;
   if (files.length === 0)
-    return <p className="text-base-content/60">No downloads yet. Submit a URL to get started.</p>;
+    return <p className="text-base-content/60">还没有下载文件。请先提交一个链接。</p>;
 
   return (
     <div className="overflow-x-auto">
       {data.truncated && (
         <p className="text-xs text-base-content/60 pb-2">
-          Showing the {files.length.toLocaleString()} newest of{" "}
+          当前显示 {files.length.toLocaleString()} newest of{" "}
           {data.total.toLocaleString()} files. Open a profile from{" "}
           <Link className="link" href="/profiles">
             Profiles
@@ -41,10 +41,10 @@ export function FileList() {
       <table className="table table-zebra">
         <thead>
           <tr>
-            <th>File</th>
-            <th>Platform</th>
-            <th>Size</th>
-            <th>Modified</th>
+            <th>文件</th>
+            <th>平台</th>
+            <th>大小</th>
+            <th>修改时间</th>
             <th aria-label="download" />
           </tr>
         </thead>

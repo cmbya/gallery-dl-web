@@ -23,22 +23,22 @@ export const THEME_OPTIONS: {
   {
     mode: "system",
     icon: "🖥️",
-    label: "System",
-    description: "Follow the OS setting, and change with it.",
+    label: "跟随系统",
+    description: "跟随操作系统外观设置，并随系统变化。",
     marker: "theme-option-system",
   },
   {
     mode: "light",
     icon: "☀️",
-    label: "Light",
-    description: "Always light, whatever the OS says.",
+    label: "浅色",
+    description: "始终使用浅色模式。",
     marker: "theme-option-light",
   },
   {
     mode: "dark",
     icon: "🌙",
-    label: "Dark",
-    description: "Always dark, whatever the OS says.",
+    label: "深色",
+    description: "始终使用深色模式。",
     marker: "theme-option-dark",
   },
 ];
