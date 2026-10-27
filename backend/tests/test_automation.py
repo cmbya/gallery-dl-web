@@ -73,12 +73,14 @@ class Backend:
         return value
 
     def download(self, username, post, folder, done, success, generation):
-        for media in post["media"]:
+        # Like the real adapter, resolve fresh detail from safe identifiers.
+        media_ids = [f"{post['id']}a", f"{post['id']}b"]
+        for media in media_ids:
             if not done(media):
                 self.downloads.append(media)
                 if media not in self.fail:
                     success(media)
-        return all(done(media) for media in post["media"])
+        return all(done(media) for media in media_ids)
 
 
 def post(i, pinned=False):
@@ -91,7 +93,7 @@ def post(i, pinned=False):
     }
 
 
-def test_history_replays_current_page_and_partial_media(tmp_path):
+def test_history_queues_current_page_and_partial_media(tmp_path):
     store = AutomationStore(tmp_path / "state.sqlite")
     sub = store.upsert({"username": "alice", "history_enabled": True, "history_limit": 1})
     backend = Backend(
@@ -100,7 +102,7 @@ def test_history_replays_current_page_and_partial_media(tmp_path):
     engine = Engine(store, backend, max_pages=4, max_posts=20)
     first = engine.run(sub, "history")
     assert first["completed"] == 1 and first["failed"] == 1
-    assert store.cursor("alice") is None  # current page, not next page; no skipped suffix
+    assert store.cursor("alice") == "next"  # suffix/failures are durable locally
     backend.fail.clear()
     second = engine.run(sub, "history")
     assert second["completed"] == 1
@@ -109,7 +111,7 @@ def test_history_replays_current_page_and_partial_media(tmp_path):
     third = engine.run(sub, "history")
     assert third["completed"] == 1
     assert store.history_status("alice") == "exhausted"
-    assert backend.calls == [None, None, "next"]  # pending retry needs no profile page
+    assert backend.calls == [None, "next"]  # queue/retry needs no boundary page
     store.close()
 
 

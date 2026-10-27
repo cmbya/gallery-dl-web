@@ -163,7 +163,7 @@ async def reposition(identifier: str, body: Reposition, request: Request) -> dic
         if srv.instagram_lock.locked() or srv.store.has_active_run(sub["username"]):
             raise HTTPException(409, "wait for Instagram jobs to finish or cancel them first")
         # No await between the guard and write: workers cannot start in between.
-        srv.store.set_cursor(sub["username"], None, "ready")
+        srv.store.reset_history(sub["username"])
         return {"reset": True}
     except KeyError as exc:
         raise error(exc) from None

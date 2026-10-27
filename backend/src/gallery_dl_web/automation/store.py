@@ -49,6 +49,16 @@ def post_folder(title: str, post_id: str) -> str:
     return safe_component(title, 179 - len(identifier.encode())) + "_" + identifier
 
 
+def post_metadata(post: dict[str, Any]) -> dict[str, Any]:
+    """Allowlist durable identity/title only; never retain feed responses or CDN URLs."""
+    result: dict[str, Any] = {key: str(post[key]) for key in ("id", "pk", "code") if post.get(key)}
+    caption = post.get("caption")
+    title = caption.get("text", "") if isinstance(caption, dict) else caption
+    if title:
+        result["caption"] = {"text": str(title)}
+    return result
+
+
 class AutomationStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,6 +71,11 @@ class AutomationStore:
         CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS history(
             username TEXT PRIMARY KEY,cursor TEXT,status TEXT NOT NULL DEFAULT 'ready');
+        CREATE TABLE IF NOT EXISTS history_feed(
+            username TEXT PRIMARY KEY,terminal INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS history_pending(
+            position INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL,
+            post_id TEXT NOT NULL,payload TEXT NOT NULL,UNIQUE(username,post_id));
         CREATE TABLE IF NOT EXISTS posts(
             username TEXT,post_id TEXT,folder TEXT NOT NULL,payload TEXT NOT NULL,
             completed INTEGER NOT NULL DEFAULT 0,generation INTEGER NOT NULL DEFAULT 0,
@@ -164,6 +179,75 @@ class AutomationStore:
                 "INSERT OR REPLACE INTO history VALUES (?,?,?)", (username, cursor, status)
             )
 
+    def reset_history(self, username: str) -> None:
+        """Explicit reposition discards discoveries, not attempted posts or media archives."""
+        with self.db:
+            self.db.execute("DELETE FROM history_pending WHERE username=?", (username,))
+            self.db.execute("DELETE FROM history_feed WHERE username=?", (username,))
+            self.db.execute("INSERT OR REPLACE INTO history VALUES (?,NULL,'ready')", (username,))
+
+    def enqueue_posts(self, username: str, posts: list[dict[str, Any]]) -> None:
+        for post in posts:
+            identifier = str(post.get("pk") or post.get("id") or post.get("code") or "")
+            if not identifier:
+                raise ValueError("post identity missing")
+            self.db.execute(
+                "INSERT OR IGNORE INTO history_pending(username,post_id,payload) VALUES (?,?,?)",
+                (username, identifier, json.dumps(post_metadata(post))),
+            )
+
+    def save_page(self, username: str, posts: list[dict[str, Any]], cursor: str | None) -> None:
+        # Queue and continuation commit together, before the first detail/download request.
+        with self.db:
+            self.enqueue_posts(username, posts)
+            self.db.execute(
+                "INSERT OR REPLACE INTO history_feed VALUES (?,?)", (username, cursor is None)
+            )
+            self.db.execute(
+                "INSERT OR REPLACE INTO history VALUES (?,?,'ready')", (username, cursor)
+            )
+
+    def restore_pending(self, username: str) -> None:
+        # Import old attempted failures only when absent; queue order survives process restarts.
+        with self.db:
+            self.enqueue_posts(username, self.pending(username, 2147483647))
+
+    def queued_posts(self, username: str) -> list[dict[str, Any]]:
+        return [
+            json.loads(row[0])
+            for row in self.db.execute(
+                "SELECT payload FROM history_pending WHERE username=? ORDER BY position",
+                (username,),
+            )
+        ]
+
+    def rotate_pending(self, username: str, post_id: str) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE history_pending SET position=(SELECT COALESCE(MAX(position),0)+1 "
+                "FROM history_pending) WHERE username=? AND post_id=?",
+                (username, post_id),
+            )
+
+    def remove_pending(self, username: str, post_id: str) -> None:
+        with self.db:
+            self.db.execute(
+                "DELETE FROM history_pending WHERE username=? AND post_id=?", (username, post_id)
+            )
+
+    def feed_terminal(self, username: str) -> bool:
+        row = self.db.execute(
+            "SELECT terminal FROM history_feed WHERE username=?", (username,)
+        ).fetchone()
+        return bool(row[0]) if row else self.history_status(username) == "exhausted"
+
+    def finish_history(self, username: str) -> None:
+        pending = self.db.execute(
+            "SELECT 1 FROM history_pending WHERE username=? LIMIT 1", (username,)
+        ).fetchone()
+        if self.feed_terminal(username) and pending is None:
+            self.set_cursor(username, None, "exhausted")
+
     def is_done(self, username: str, post_id: str, media_id: str) -> bool:
         return (
             self.db.execute(
@@ -192,7 +276,7 @@ class AutomationStore:
             self.db.execute(
                 "INSERT INTO posts(username,post_id,folder,payload) VALUES (?,?,?,?) "
                 "ON CONFLICT(username,post_id) DO UPDATE SET payload=excluded.payload",
-                (username, post_id, folder, json.dumps(payload)),
+                (username, post_id, folder, json.dumps(post_metadata(payload))),
             )
         result = self.post(username, post_id)
         assert result is not None

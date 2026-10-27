@@ -23,7 +23,7 @@ def test_exhausted_history_retries_pending_without_rescan(tmp_path):
     engine = Engine(store, backend)
     first = engine.run(sub, "history")
     assert first["completed"] == 1 and first["failed"] == 1
-    assert store.history_status("alice") == "exhausted"
+    assert store.history_status("alice") == "ready"  # failure still needs draining
     backend.fail.clear()
     second = engine.run(sub, "history")
     assert second["completed"] == 1 and backend.calls == [None]

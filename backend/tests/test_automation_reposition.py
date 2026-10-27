@@ -18,6 +18,8 @@ def test_reposition_only_resets_history(tmp_path, status):
         srv.store.remember("alice", "1", "stable-folder", {"id": "1"})
         srv.store.media_done("alice", "1", "m1")
         srv.store.complete("alice", "1")
+        srv.store.save_page("alice", [{"id": "discovered", "code": "New"}], "next")
+        srv.store.set_cursor("alice", "expired", status)
         before_post = srv.store.post("alice", "1")
         before_snapshot = srv.store.snapshot()
         media = tmp_path / "existing.jpg"
@@ -29,6 +31,8 @@ def test_reposition_only_resets_history(tmp_path, status):
             assert response.json() == {"reset": True}
             assert srv.store.cursor("alice") is None
             assert srv.store.history_status("alice") == "ready"
+            assert srv.store.queued_posts("alice") == []
+            assert not srv.store.feed_terminal("alice")
         assert srv.store.cursor("bob") == "other"
         assert srv.store.history_status("bob") == "exhausted"
         assert srv.store.post("alice", "1") == before_post
