@@ -45,6 +45,10 @@ class PacingUpdateRequest(BaseModel):
 
 
 class CookiesUpdateRequest(BaseModel):
+    ig_cookies_text: str | None = Field(
+        default=None,
+        description="Instagram Netscape cookies.txt. Requires sessionid; empty string clears it.",
+    )
     ig_sessionid: str | None = Field(
         default=None, description="Instagram sessionid cookie. Empty string clears it."
     )

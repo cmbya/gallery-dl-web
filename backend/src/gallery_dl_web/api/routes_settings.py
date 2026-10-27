@@ -36,7 +36,11 @@ async def update_cookies(
     ps: PacingStore = Depends(get_pacing_store),
 ) -> SettingsResponse:
     try:
-        cs.update(ig_sessionid=req.ig_sessionid, fb_cookies_text=req.fb_cookies_text)
+        cs.update(
+            ig_sessionid=req.ig_sessionid,
+            fb_cookies_text=req.fb_cookies_text,
+            ig_cookies_text=req.ig_cookies_text,
+        )
     except ValueError as exc:
         # Never echo the submitted value back — name the field/problem only.
         raise HTTPException(status_code=422, detail=str(exc)) from exc

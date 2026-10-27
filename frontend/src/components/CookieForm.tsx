@@ -5,6 +5,7 @@ import { getSettings, updateCookies, type SettingsResponse } from "@/lib/api";
 
 export function CookieForm() {
   const [ig, setIg] = useState("");
+  const [igText, setIgText] = useState("");
   const [fb, setFb] = useState("");
   const [status, setStatus] = useState<SettingsResponse | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -23,13 +24,16 @@ export function CookieForm() {
     setBusy(true);
     setMsg(null);
     try {
-      const body: { ig_sessionid?: string; fb_cookies_text?: string } = {};
+      const body: { ig_sessionid?: string; ig_cookies_text?: string; fb_cookies_text?: string } = {};
+      if (ig && igText) throw new Error("Instagram 请只填写完整 Cookie 或 sessionid 中的一种。");
       if (ig) body.ig_sessionid = ig;
+      if (igText) body.ig_cookies_text = igText;
       if (fb) body.fb_cookies_text = fb;
       const s = await updateCookies(body);
       setStatus(s);
       setMsg({ kind: "ok", text: "已保存。Cookie 内容不会再次显示。" });
       setIg("");
+      setIgText("");
       setFb("");
     } catch (err) {
       setMsg({
@@ -50,8 +54,37 @@ export function CookieForm() {
             {status?.has_ig && <span className="badge badge-success badge-sm">已配置</span>}
           </div>
           <p className="text-xs text-base-content/60">
-            请粘贴 <code>sessionid</code> Cookie。gallery-dl 不支持密码登录，因此需要 Cookie。在桌面浏览器中打开开发者工具：应用程序 → Cookie → instagram.com → 复制 <code>sessionid</code>.
+            推荐上传浏览器扩展导出的 Netscape 格式 cookies.txt，需包含 sessionid。仅导入 Instagram 域名的 Cookie，忽略其他网站。Cookie 可访问账号，请勿分享。
           </p>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm">完整 Instagram Cookie（推荐）</span>
+            <textarea
+              className="textarea textarea-bordered w-full h-32 font-mono text-xs"
+              placeholder="# Netscape HTTP Cookie File"
+              value={igText}
+              onChange={(e) => setIgText(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="flex flex-col gap-2">
+            <span className="text-sm">上传 Instagram cookies.txt</span>
+            <input
+              type="file"
+              accept=".txt,text/plain"
+              className="file-input file-input-bordered file-input-sm"
+              onChange={async (e) => {
+                const input = e.currentTarget;
+                const file = input.files?.[0];
+                if (file) {
+                  setIgText(await file.text());
+                  setIg("");
+                }
+                input.value = "";
+              }}
+            />
+          </label>
+          <p className="text-xs text-base-content/60">兼容旧方式：也可仅填写 sessionid 的值。两种方式只能选一种，留空不会清除已保存内容。</p>
           <input
             type="password"
             className="input input-bordered w-full"

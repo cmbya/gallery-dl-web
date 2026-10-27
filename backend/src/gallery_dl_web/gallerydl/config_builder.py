@@ -272,7 +272,7 @@ def _cookie_for(platform: str, cookies: Any) -> Any:
             raise ValueError(
                 "instagram requires a 'sessionid' cookie (gallery-dl disables password login)"
             )
-        return {"sessionid": sessionid}
+        return dict(cookies)
 
     if platform == "facebook":
         # gallery-dl accepts a Netscape file path (str) or a name/value dict.

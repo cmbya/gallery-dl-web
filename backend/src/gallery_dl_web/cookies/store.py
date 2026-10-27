@@ -98,7 +98,11 @@ class CookieStore:
         IG -> ``{"sessionid": ...}``; FB -> ``{name: value, ...}``.
         """
         if platform == "instagram":
-            sid = self._data.get("instagram", {}).get("sessionid")
+            data = self._data.get("instagram", {})
+            sid = data.get("sessionid")
+            cookies = data.get("cookies")
+            if isinstance(cookies, dict) and cookies.get("sessionid"):
+                return dict(cookies)
             return {"sessionid": sid} if sid else None
         if platform == "facebook":
             cookies = self._data.get("facebook", {}).get("cookies")
@@ -112,10 +116,31 @@ class CookieStore:
         self,
         ig_sessionid: str | None = None,
         fb_cookies_text: str | None = None,
+        ig_cookies_text: str | None = None,
     ) -> None:
         """Update one or both platforms and persist. Empty strings clear a platform."""
+        if ig_sessionid is not None and ig_cookies_text is not None:
+            raise ValueError("choose either Instagram sessionid or Netscape cookies, not both")
+        ig_cookies = None
+        if ig_cookies_text is not None:
+            ig_cookies = {}
+            if ig_cookies_text.strip():
+                lines = []
+                for line in ig_cookies_text.splitlines():
+                    domain = line.split("\t", 1)[0].strip().removeprefix("#HttpOnly_")
+                    domain = domain.lstrip(".").lower()
+                    if domain == "instagram.com" or domain.endswith(".instagram.com"):
+                        lines.append(line)
+                ig_cookies = parse_netscape("\n".join(lines))
+                if not ig_cookies.get("sessionid"):
+                    raise ValueError("Instagram Netscape cookies require a sessionid")
         if ig_sessionid is not None:
-            self._data.setdefault("instagram", {})["sessionid"] = ig_sessionid.strip()
+            self._data["instagram"] = {"sessionid": ig_sessionid.strip()}
+        if ig_cookies is not None:
+            self._data["instagram"] = {
+                "sessionid": ig_cookies.get("sessionid", ""),
+                "cookies": ig_cookies,
+            }
         if fb_cookies_text is not None:
             text = fb_cookies_text.strip()
             if not text:

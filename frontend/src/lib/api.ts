@@ -131,6 +131,7 @@ export async function updatePacing(
 
 export async function updateCookies(body: {
   ig_sessionid?: string;
+  ig_cookies_text?: string;
   fb_cookies_text?: string;
 }): Promise<SettingsResponse> {
   const res = await fetch("/api/settings/cookies", {
