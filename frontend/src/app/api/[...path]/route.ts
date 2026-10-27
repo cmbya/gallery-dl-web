@@ -67,6 +67,7 @@ async function proxy(req: NextRequest, ctx: Ctx): Promise<Response> {
 
 export const GET = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const POST = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
+export const PATCH = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const PUT = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const DELETE = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const OPTIONS = () => new Response(null, { status: 204 });
