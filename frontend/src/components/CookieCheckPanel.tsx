@@ -1,5 +1,6 @@
 "use client";
 
+import { AutomationDiagnostic } from "@/components/AutomationDiagnostic";
 import { useRef, useState } from "react";
 import { ApiError, checkAutomationCookies, type CookieCheck } from "@/lib/api";
 import { formatTime, normalizeUsername, reasonLabel, statusLabel } from "@/lib/automation";
@@ -22,6 +23,7 @@ export function CookieCheckPanel({ check, disabled = false, onChecked }: {
         <div><dt className="font-medium">帖子访问状态</dt><dd>{statusLabel(check?.posts_status)}</dd></div>
       </dl>
       <p className="text-sm">最近检查：{formatTime(check?.checked_at)}</p>
+      <AutomationDiagnostic diagnostic={check?.diagnostic} />
       {check?.reason && <p className="text-sm break-words">说明：{reasonLabel(check.reason)}</p>}
       <form className="flex flex-col gap-2" onSubmit={async (event) => {
         event.preventDefault();

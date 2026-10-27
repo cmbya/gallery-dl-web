@@ -14,8 +14,9 @@ GLOBAL_STOPS = frozenset({"rate_limited", "challenge", "invalid_session"})
 
 
 class StopRound(TerminateExtraction):  # type: ignore[misc]
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, diagnostic: dict[str, Any] | None = None) -> None:
         self.reason = reason
+        self.diagnostic = diagnostic
         super().__init__(reason)
 
 
@@ -142,6 +143,8 @@ class Engine:
             raise StopRound("scan_budget")
         except StopRound as exc:
             result.update(status="stopped", reason=exc.reason)
+            if exc.diagnostic:
+                result["diagnostic"] = exc.diagnostic
             if mode == "history" and exc.reason == "needs_reposition":
                 self.store.set_cursor(username, cursor, "needs_reposition")
             if exc.reason in GLOBAL_STOPS:

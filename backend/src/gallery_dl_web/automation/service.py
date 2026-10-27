@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import sys
 import time
 from collections.abc import Awaitable, Callable
@@ -160,6 +161,26 @@ class AutomationService:
             value: Any = json.loads(stdout)
             if not isinstance(value, dict):
                 raise ValueError("invalid worker response")
+            reason = value.get("reason")
+            if reason in {
+                "redirect_home",
+                "redirect_login",
+                "redirect_challenge",
+                "redirect_external",
+                "redirect_insecure",
+                "redirect_invalid",
+                "redirect_missing_location",
+                "redirect_unsupported",
+                "redirect_loop",
+                "redirect_limit",
+                "query_error",
+                "request_budget",
+                "scan_budget",
+                "challenge",
+                "invalid_session",
+                "rate_limited",
+            }:
+                logging.getLogger(__name__).warning("Automation stopped: %s", reason)
             return value
         except TimeoutError:
             return {"status": "stopped", "reason": "time_budget"}
@@ -246,6 +267,7 @@ class AutomationService:
                 "login_status": result.get("login_status", "error"),
                 "posts_status": result.get("posts_status", "unknown"),
                 "reason": result.get("reason"),
+                "diagnostic": result.get("diagnostic"),
             }
             if result.get("reason") in GLOBAL_STOPS:
                 self.store.pause(result["reason"])

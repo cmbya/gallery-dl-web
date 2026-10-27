@@ -11,7 +11,14 @@ export interface SubscriptionInput {
   history_enabled: boolean;
   history_limit: number;
 }
+export interface AutomationDiagnostic {
+  stage: string;
+  status?: number;
+  target?: string;
+  classification?: string;
+}
 export interface AutomationResult {
+  diagnostic?: AutomationDiagnostic | null;
   status: string;
   checked: number;
   completed: number;
@@ -32,6 +39,7 @@ export interface AutomationRun extends AutomationResult {
   mode: AutomationMode;
 }
 export interface CookieCheck {
+  diagnostic?: AutomationDiagnostic | null;
   login_status: string;
   posts_status: string;
   checked_at?: number | string | null;

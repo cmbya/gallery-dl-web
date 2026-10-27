@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 from gallery_dl import config, extractor, job, output
 
@@ -40,6 +41,55 @@ def response_problem(response: Any) -> str | None:
     return None
 
 
+def endpoint(url: str) -> str:
+    """Fixed categories only: never return usernames, IDs, hosts, queries or fragments."""
+    try:
+        path = urlsplit(url).path.lower().strip("/")
+    except ValueError:
+        return "unknown"
+    if not path:
+        return "home"
+    if path.startswith("accounts/login"):
+        return "login"
+    if path.startswith(("challenge", "checkpoint")):
+        return "challenge"
+    if path == "api/v1/accounts/current_user":
+        return "identity"
+    if path == "graphql/query":
+        return "graphql"
+    if path.startswith("api/"):
+        return "api"
+    if path.startswith(("p/", "reel/", "stories/")):
+        return "media"
+    return "profile" if "/" not in path else "other"
+
+
+def redirect_target(source: str, location: str) -> tuple[str, str | None]:
+    if not location:
+        return "", "redirect_missing_location"
+    try:
+        if any(ord(c) < 32 for c in location) or "\\\\" in location:
+            return "", "redirect_invalid"
+        target = urljoin(source, location)
+        old, new = urlsplit(source), urlsplit(target)
+        if new.username or new.password:
+            return "", "redirect_invalid"
+        if new.scheme != "https":
+            return "", "redirect_insecure"
+        if (new.hostname, new.port or 443) != (old.hostname, old.port or 443):
+            return "", "redirect_external"
+        if new.hostname not in {"instagram.com", "www.instagram.com", "i.instagram.com"}:
+            return "", "redirect_external"
+        category = endpoint(target)
+        if category in {"home", "login", "challenge"}:
+            return target, f"redirect_{category}"
+        if new.query != old.query or new.fragment or (new.path.rstrip("/") != old.path.rstrip("/")):
+            return target, "redirect_unsupported"
+        return target, None
+    except ValueError:
+        return "", "redirect_invalid"
+
+
 class GalleryBackend:
     def __init__(
         self,
@@ -63,6 +113,7 @@ class GalleryBackend:
         self.downloads = downloads
         self.remaining = request_budget
         self.extr: Any = None
+        self.last_diagnostic: dict[str, Any] | None = None
 
     def initialize(self, username: str) -> Any:
         if self.extr is None:
@@ -76,16 +127,58 @@ class GalleryBackend:
         original = extr.session.send
 
         def send(request: Any, **kwargs: Any) -> Any:
-            if self.remaining <= 0:
-                raise StopRound("request_budget")
-            self.remaining -= 1
+            # Keep Requests' redirect preparation (method/body/cookie handling), but never
+            # let its recursive Session.send follow a destination before our validation.
             kwargs["allow_redirects"] = False
-            response = original(request, **kwargs)
-            problem = response_problem(response)
-            if problem:
-                response.close()
-                raise StopRound(problem)
-            return response
+            seen = {request.url}
+            history = []
+            for hop in range(4):
+                if self.remaining <= 0:
+                    raise StopRound("request_budget", {"stage": endpoint(request.url)})
+                self.remaining -= 1
+                response = original(request, **kwargs)
+                self.last_diagnostic = {
+                    "stage": endpoint(request.url),
+                    "status": response.status_code,
+                }
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("Location", "")
+                    target, problem = redirect_target(request.url, location)
+                    if problem is None and target in seen:
+                        problem = "redirect_loop"
+                    if problem is None and hop == 3:
+                        problem = "redirect_limit"
+                    if problem:
+                        diagnostic = {
+                            "stage": endpoint(request.url),
+                            "status": response.status_code,
+                            "target": endpoint(target),
+                            "classification": problem,
+                        }
+                        response.close()
+                        raise StopRound(problem, diagnostic)
+                    following = response.next
+                    response.close()
+                    if following is None:
+                        raise StopRound("redirect_unsupported")
+                    history.append(response)
+                    seen.add(target)
+                    request = following
+                    continue
+                problem = response_problem(response)
+                if problem:
+                    response.close()
+                    raise StopRound(
+                        problem,
+                        {
+                            "stage": endpoint(request.url),
+                            "status": response.status_code,
+                            "classification": problem,
+                        },
+                    )
+                response.history = history
+                return response
+            raise StopRound("redirect_limit")
 
         extr.session.send = send
 
@@ -111,7 +204,9 @@ class GalleryBackend:
                         )
                     captured.update(data)
                 except (ValueError, KeyError, StopIteration, TypeError):
-                    raise StopRound("needs_reposition" if cursor else "query_error") from None
+                    raise StopRound(
+                        "needs_reposition" if cursor else "query_error", self.last_diagnostic
+                    ) from None
             return response
 
         extr.config, extr.request = cfg, request
@@ -139,7 +234,9 @@ class GalleryBackend:
         except StopRound:
             raise
         except Exception:
-            raise StopRound("needs_reposition" if cursor else "query_error") from None
+            raise StopRound(
+                "needs_reposition" if cursor else "query_error", self.last_diagnostic
+            ) from None
         finally:
             if iterator is not None and hasattr(iterator, "close"):
                 iterator.close()
@@ -260,6 +357,7 @@ class GalleryBackend:
                     "restricted" if exc.reason in {"challenge", "rate_limited"} else "error"
                 )
                 result["reason"] = exc.reason
+                result["diagnostic"] = exc.diagnostic
                 if exc.reason == "invalid_session":
                     result["login_status"] = "login_required"
         return result

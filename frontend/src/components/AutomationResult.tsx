@@ -1,3 +1,4 @@
+import { AutomationDiagnostic } from "@/components/AutomationDiagnostic";
 import type { AutomationResult as Result } from "@/lib/api";
 import { formatTime, reasonLabel, statusLabel } from "@/lib/automation";
 
@@ -12,6 +13,7 @@ export function AutomationResult({ result }: { result?: Result | null }) {
       <div className="flex gap-1"><dt>失败帖子</dt><dd>{result.failed}</dd></div>
     </dl>
     {result.file_count !== undefined && <p>下载文件数（非帖子数）：{result.file_count}</p>}
+    <AutomationDiagnostic diagnostic={result.diagnostic} />
     {result.reason && <p className="break-words">说明：{reasonLabel(result.reason)}</p>}
   </div>;
 }

@@ -39,6 +39,19 @@ async function mount(name, props) {
 function submit(container) { container.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); }
 const input = { username: '@Example', enabled: true, refresh_enabled: true, refresh_limit: 20, history_enabled: true, history_limit: 100 };
 
+test('redirect reasons and sanitized diagnostic render in results and cookie checks', () => {
+  const { reasonLabel } = require('../src/lib/automation.ts');
+  for (const reason of ['redirect', 'redirect_home', 'redirect_login', 'redirect_challenge', 'redirect_external', 'redirect_insecure', 'redirect_invalid', 'redirect_missing_location', 'redirect_unsupported', 'redirect_loop', 'redirect_limit', 'query_error', 'scan_budget']) assert.ok(!reasonLabel(reason).includes('未识别'));
+  const diagnostic = { stage: 'graphql', status: 302, target: 'login', classification: 'redirect_login' };
+  for (const html of [
+    render('AutomationResult', { result: { status: 'stopped', checked: 0, completed: 0, skipped: 0, failed: 0, reason: 'redirect_login', diagnostic } }),
+    render('CookieCheckPanel', { check: { login_status: 'unknown', posts_status: 'unknown', reason: 'redirect_login', diagnostic }, onChecked: async () => {} }),
+  ]) {
+    assert.match(html, /帖子查询接口/); assert.match(html, /HTTP 302/); assert.match(html, /登录页/); assert.match(html, /尚不能确认/);
+  }
+  assert.ok(!render('AutomationDiagnostic', { diagnostic: { stage: 'SECRET_URL', target: 'SECRET_COOKIE', status: 9999 } }).includes('SECRET'));
+});
+
 test('normalizes usernames and profile URLs, rejects post URLs and foreign origins', () => {
   assert.equal(normalizeUsername(' https://www.instagram.com/Example/?hl=en '), 'example');
   assert.equal(normalizeUsername('@Example'), 'example');

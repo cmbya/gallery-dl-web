@@ -29,6 +29,7 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
                 "login_status": "login_required" if exc.reason == "invalid_session" else "unknown",
                 "posts_status": "restricted" if exc.reason in GLOBAL_STOPS else "unknown",
                 "reason": exc.reason,
+                "diagnostic": exc.diagnostic,
             }
         except Exception:
             return {"login_status": "error", "posts_status": "unknown", "reason": "check_error"}

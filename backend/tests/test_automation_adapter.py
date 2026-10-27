@@ -68,7 +68,7 @@ def test_actual_graphql_page_does_not_fetch_next_page(tmp_path, monkeypatch):
     ("status", "data", "reason"),
     [
         (429, {}, "rate_limited"),
-        (302, {}, "redirect"),
+        (302, {}, "redirect_missing_location"),
         (200, {"message": "challenge_required"}, "challenge"),
         (200, {"message": "login_required"}, "invalid_session"),
         (200, {"status": "fail", "message": "Please wait a few minutes"}, "rate_limited"),
