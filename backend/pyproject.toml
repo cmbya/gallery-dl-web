@@ -18,9 +18,9 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "sse-starlette>=2.1",
     "pydantic-settings>=2.5",
-    # 1.32.12 moved Instagram posts/reels onto the Polaris GraphQL API. Instagram retired the REST
-    # /api/v1/feed/user/ listing older versions use: it 302s every caller to the home page.
-    "gallery-dl>=1.32.12",
+    # 1.32.18 includes Instagram user/posts query and relay parameter fixes.
+    # Pin the tested extractor version; Docker installs it from uv.lock with --frozen.
+    "gallery-dl==1.32.18",
     "Pillow>=10.0",
 ]
 
