@@ -8,7 +8,7 @@ export function AutomationResult({ result }: { result?: Result | null }) {
     <p>状态：{statusLabel(result.status)} · 时间：{formatTime(result.created_at)}</p>
     <dl className="flex flex-wrap gap-x-4 gap-y-1" aria-label="帖子处理统计">
       <div className="flex gap-1"><dt>已检查帖子</dt><dd>{result.checked}</dd></div>
-      <div className="flex gap-1"><dt>已完成帖子</dt><dd>{result.completed}</dd></div>
+      <div className="flex gap-1"><dt>本轮新增完成</dt><dd>{result.completed}</dd></div>
       <div className="flex gap-1"><dt>已跳过帖子</dt><dd>{result.skipped}</dd></div>
       <div className="flex gap-1"><dt>失败帖子</dt><dd>{result.failed}</dd></div>
     </dl>

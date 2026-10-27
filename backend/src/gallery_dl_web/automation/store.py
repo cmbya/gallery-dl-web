@@ -71,6 +71,9 @@ class AutomationStore:
         CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS history(
             username TEXT PRIMARY KEY,cursor TEXT,status TEXT NOT NULL DEFAULT 'ready');
+        CREATE TABLE IF NOT EXISTS platform_totals(
+            username TEXT PRIMARY KEY,total INTEGER NOT NULL,observed_at REAL NOT NULL,
+            scope TEXT NOT NULL CHECK(scope='platform_approximate'));
         CREATE TABLE IF NOT EXISTS history_feed(
             username TEXT PRIMARY KEY,terminal INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS history_pending(
@@ -111,6 +114,7 @@ class AutomationStore:
         for row in self.db.execute("SELECT * FROM subscriptions ORDER BY username"):
             value = {"id": row["id"], "username": row["username"], **json.loads(row["config"])}
             value["history_status"] = self.history_status(row["username"])
+            value["progress"] = self.progress(row["username"])
             last = self.db.execute(
                 "SELECT payload FROM runs WHERE username=? ORDER BY rowid DESC LIMIT 1",
                 (row["username"],),
@@ -118,6 +122,35 @@ class AutomationStore:
             value["last_result"] = json.loads(last[0]) if last else None
             result.append(value)
         return result
+
+    def observe_platform_total(self, username: str, total: Any) -> None:
+        """Only reliable raw profile counts, never inferred from pages/runs/files."""
+        if type(total) is not int or total < 0:
+            return
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO platform_totals VALUES (?,?,?,'platform_approximate')",
+                (username, total, time.time()),
+            )
+
+    def progress(self, username: str) -> dict[str, Any]:
+        counts = self.db.execute(
+            "SELECT COUNT(CASE WHEN completed=1 THEN 1 END),"
+            "COUNT(CASE WHEN completed=0 THEN 1 END) FROM posts WHERE username=?",
+            (username,),
+        ).fetchone()
+        total = self.db.execute(
+            "SELECT total,observed_at FROM platform_totals WHERE username=?", (username,)
+        ).fetchone()
+        queued = self.db.execute(
+            "SELECT 1 FROM history_pending WHERE username=? LIMIT 1", (username,)
+        ).fetchone()
+        return {
+            "completed": counts[0],
+            "platform_total": total[0] if total else None,
+            "total_updated_at": total[1] if total else None,
+            "history_complete": self.feed_terminal(username) and queued is None and counts[1] == 0,
+        }
 
     def get(self, identifier: str) -> dict[str, Any]:
         for value in self.subscriptions():
@@ -245,7 +278,10 @@ class AutomationStore:
         pending = self.db.execute(
             "SELECT 1 FROM history_pending WHERE username=? LIMIT 1", (username,)
         ).fetchone()
-        if self.feed_terminal(username) and pending is None:
+        incomplete = self.db.execute(
+            "SELECT 1 FROM posts WHERE username=? AND completed=0 LIMIT 1", (username,)
+        ).fetchone()
+        if self.feed_terminal(username) and pending is None and incomplete is None:
             self.set_cursor(username, None, "exhausted")
 
     def is_done(self, username: str, post_id: str, media_id: str) -> bool:

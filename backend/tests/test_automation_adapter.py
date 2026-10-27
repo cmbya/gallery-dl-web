@@ -130,10 +130,13 @@ def test_real_downloadjob_partial_archive_and_deleted_file(tmp_path, monkeypatch
     assert len(files) == 1 and files[0].read_bytes() == b"jpeg"
     assert files[0].name == "11.jpg"
     files[0].unlink()
+    assert store.progress("alice")["completed"] == 1
     assert Engine(store, backend).run(sub, "refresh")["skipped"] == 1
     assert len(calls) == 1
     assert store.redownload("alice", "11")
+    assert store.progress("alice")["completed"] == 0
     assert Engine(store, backend).run(sub, "refresh")["completed"] == 1
+    assert store.progress("alice")["completed"] == 1
     assert list((tmp_path / "downloads").rglob("11_redownload1.jpg"))
     store.close()
 

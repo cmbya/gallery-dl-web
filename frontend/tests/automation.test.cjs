@@ -73,7 +73,7 @@ test('form exposes named independent modes and keyboard-native controls', () => 
 });
 test('result counters distinguish posts from files and escape reason text', () => {
   const html = render('AutomationResult', { result: { status: 'failed', checked: 8, completed: 3, skipped: 4, failed: 1, file_count: 12, reason: '<script>bad</script>' } });
-  for (const label of ['已检查帖子', '已完成帖子', '已跳过帖子', '失败帖子', '下载文件数（非帖子数）']) assert.ok(html.includes(label));
+  for (const label of ['已检查帖子', '本轮新增完成', '已跳过帖子', '失败帖子', '下载文件数（非帖子数）']) assert.ok(html.includes(label));
   assert.ok(!html.includes('<script>')); assert.match(html, /&lt;script&gt;/);
 });
 test('cookie panel separates login validity from restricted posts and is manual', () => {
@@ -199,6 +199,45 @@ test('history reposition requires confirmation, preserves archives, refreshes st
     assert.match(ui.container.querySelector('[role=alert]').textContent, /wait for Instagram jobs/);
     assert.equal(button.disabled, false);
   } finally { await ui.close(); global.fetch = original; window.confirm = confirm; }
+});
+
+test('archive progress uses reference totals without percentages or inferred completion', () => {
+  const progress = { completed: 12, platform_total: 44, total_updated_at: 1700000000, history_complete: false };
+  const html = render('ArchiveProgress', { progress });
+  assert.match(html, /累计归档：12 \/ 约44帖/);
+  assert.match(html, /平台参考总数/); assert.match(html, /Reels/);
+  assert.doesNotMatch(html, /%|历史补全完成/);
+  assert.match(render('ArchiveProgress', { progress: { ...progress, platform_total: null } }), /已归档12帖·总数未知/);
+  assert.match(render('ArchiveProgress', { progress: { ...progress, platform_total: 0 } }), /12 \/ 约0帖/);
+  assert.doesNotMatch(render('ArchiveProgress', { progress: { ...progress, platform_total: 1 } }), /历史补全完成/);
+  const complete = render('ArchiveProgress', { progress: { ...progress, history_complete: true } });
+  assert.match(complete, /历史补全完成·已归档12帖/);
+  assert.match(complete, /当前可访问/); assert.match(complete, /不会自动重新扫描/);
+});
+
+test('completed history may be manually disabled without disabling refresh or deleting archives', async () => {
+  const original = global.fetch; const writes = [];
+  const subscription = { ...input, username: 'example', id: '42', progress: { completed: 12, platform_total: 44, total_updated_at: 1700000000, history_complete: true } };
+  const state = { subscriptions: [subscription], runs: [], paused: false, pause_reason: null, cookie_check: null };
+  global.fetch = async (url, init) => {
+    if (init.method === 'GET') return new Response(JSON.stringify(state));
+    writes.push({ url, ...init }); Object.assign(subscription, JSON.parse(init.body));
+    return new Response(JSON.stringify(subscription));
+  };
+  const ui = await mount('SubscriptionDashboard');
+  try {
+    assert.equal(writes.length, 0);
+    const button = [...ui.container.querySelectorAll('button')].find((b) => b.textContent === '关闭历史补全');
+    assert.ok(button);
+    await act(async () => { button.click(); await tick(); });
+    assert.equal(writes.length, 1); assert.equal(writes[0].method, 'PATCH');
+    assert.equal(writes[0].url, '/api/automation/subscriptions/42');
+    assert.deepEqual(JSON.parse(writes[0].body), { history_enabled: false });
+    assert.equal(subscription.refresh_enabled, true);
+    assert.match(ui.container.textContent, /最新刷新：已启用/);
+    assert.match(ui.container.textContent, /历史补全：已关闭/);
+    assert.ok(![...ui.container.querySelectorAll('button')].some((b) => b.textContent === '关闭历史补全'));
+  } finally { await ui.close(); global.fetch = original; }
 });
 
 test('settings read errors remain visible rather than implying cookies are absent', async () => {

@@ -35,6 +35,7 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
             return {"login_status": "error", "posts_status": "unknown", "reason": "check_error"}
     store = AutomationStore(Path(payload["database"]))
     try:
+        backend.observe_user = store.observe_platform_total
         return Engine(store, backend, payload["max_pages"], payload["max_posts"]).run(
             payload["subscription"], payload["mode"]
         )

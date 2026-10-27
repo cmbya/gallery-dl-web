@@ -28,7 +28,14 @@ export interface AutomationResult {
   created_at?: number | string;
   file_count?: number;
 }
+export interface ArchiveProgress {
+  completed: number;
+  platform_total: number | null;
+  total_updated_at: number | null;
+  history_complete: boolean;
+}
 export interface Subscription extends SubscriptionInput {
+  progress: ArchiveProgress;
   id: string;
   history_status?: string | null;
   last_result?: AutomationResult | null;

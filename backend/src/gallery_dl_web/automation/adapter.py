@@ -114,12 +114,31 @@ class GalleryBackend:
         self.remaining = request_budget
         self.extr: Any = None
         self.last_diagnostic: dict[str, Any] | None = None
+        self.observe_user: Callable[[str, int], None] | None = None
 
     def initialize(self, username: str) -> Any:
         if self.extr is None:
             self.extr = extractor.find(f"https://www.instagram.com/{username}/posts/")
             self.extr.initialize()
             self.guard(self.extr)
+            assign_user = self.extr._assign_user
+
+            def observe(user: Any) -> Any:
+                # Inspect BEFORE upstream normalization: 1.32.18 invents count_media=0
+                # when edge_owner_to_timeline_media is absent. That is not a real total.
+                if isinstance(user, dict) and str(user.get("username", "")).lower() == username:
+                    edge = user.get("edge_owner_to_timeline_media")
+                    candidates = [user.get("media_count")]
+                    if isinstance(edge, dict):
+                        candidates.append(edge.get("count"))
+                    for total in candidates:
+                        if type(total) is int and total >= 0:
+                            if self.observe_user is not None:
+                                self.observe_user(username, total)
+                            break
+                return assign_user(user)
+
+            self.extr._assign_user = observe
             self.extr.login()
         return self.extr
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { addSubscription, cancelAutomationRun, deleteSubscription, getAutomation, pauseAutomation, redownloadPost, repositionHistory, resumeAutomation, triggerAutomation, updateSubscription, type AutomationMode, type AutomationState } from "@/lib/api";
 import { isActiveRun, reasonLabel, statusLabel } from "@/lib/automation";
 import { AutomationResult } from "@/components/AutomationResult";
+import { ArchiveProgress } from "@/components/ArchiveProgress";
 import { CookieCheckPanel } from "@/components/CookieCheckPanel";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
 
@@ -100,6 +101,7 @@ export function SubscriptionDashboard() {
           <h3 className="card-title break-all">@{subscription.username} <span className="badge">{subscription.enabled ? "已启用" : "已停用"}</span></h3>
           <p className="text-sm">最新刷新：{subscription.refresh_enabled ? `已启用，每次 ${subscription.refresh_limit} 帖` : "已关闭"} · 历史补全：{subscription.history_enabled ? `已启用，每次 ${subscription.history_limit} 帖` : "已关闭"}</p>
           <p className="text-sm">历史进度：{statusLabel(subscription.history_status)}</p>
+          <ArchiveProgress progress={subscription.progress} />
           <AutomationResult result={subscription.last_result} />
           {editing === subscription.id ? <div className="border-t border-base-300 pt-3"><h4 className="font-medium mb-2">编辑 @{subscription.username}</h4><SubscriptionForm initial={subscription} busy={busy} onCancel={() => closeEditor(subscription.id)} onSave={async (input) => {
             const saved = await act(() => updateSubscription(subscription.id, input), "已保存订阅修改。");
@@ -108,6 +110,7 @@ export function SubscriptionDashboard() {
           }} /></div> : <div className="flex flex-wrap gap-2">
             <button className="btn btn-sm" disabled={busy || data.paused || !subscription.enabled || !subscription.refresh_enabled} onClick={() => void trigger("refresh", subscription.id)} aria-label={`立即刷新 ${subscription.username}`}>立即刷新</button>
             <button className="btn btn-sm" disabled={busy || data.paused || !subscription.enabled || !subscription.history_enabled} onClick={() => void trigger("history", subscription.id)} aria-label={`补全 ${subscription.username} 的历史`}>补全历史</button>
+            {subscription.progress?.history_complete && subscription.history_enabled && <button className="btn btn-sm btn-outline" disabled={busy} onClick={() => void act(() => updateSubscription(subscription.id, { history_enabled: false }), "已关闭历史补全；最新刷新设置保持不变。")}>关闭历史补全</button>}
             <button className="btn btn-sm btn-outline" disabled={busy} onClick={() => void act(() => updateSubscription(subscription.id, { enabled: !subscription.enabled }), subscription.enabled ? "已停用订阅。" : "已启用订阅。")} aria-label={`${subscription.enabled ? "停用" : "启用"} ${subscription.username}`}>{subscription.enabled ? "停用" : "启用"}</button>
             <button className="btn btn-sm btn-ghost" ref={(element) => { editButtons.current[subscription.id] = element; }} disabled={busy} onClick={() => setEditing(subscription.id)} aria-label={`编辑 ${subscription.username}`}>编辑</button>
             <button className="btn btn-sm btn-outline" disabled={busy || data.runs.some((run) => run.username === subscription.username && isActiveRun(run.status))} aria-label={`重新定位 ${subscription.username} 的历史进度`} onClick={() => {
