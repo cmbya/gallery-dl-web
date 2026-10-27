@@ -2,6 +2,69 @@
 // route handler in src/app/api/[...path]/route.ts proxies them to the FastAPI backend, reading
 // BACKEND_URL at request time (deliberately NOT next.config rewrites — those bake in at build).
 
+export type AutomationMode = "refresh" | "history";
+export interface SubscriptionInput {
+  username: string;
+  enabled: boolean;
+  refresh_enabled: boolean;
+  refresh_limit: number;
+  history_enabled: boolean;
+  history_limit: number;
+}
+export interface AutomationResult {
+  status: string;
+  checked: number;
+  completed: number;
+  skipped: number;
+  failed: number;
+  reason?: string | null;
+  created_at?: number | string;
+  file_count?: number;
+}
+export interface Subscription extends SubscriptionInput {
+  id: string;
+  history_status?: string | null;
+  last_result?: AutomationResult | null;
+}
+export interface AutomationRun extends AutomationResult {
+  id: string;
+  username: string;
+  mode: AutomationMode;
+}
+export interface CookieCheck {
+  login_status: string;
+  posts_status: string;
+  checked_at?: number | string | null;
+  reason?: string | null;
+}
+export interface AutomationState {
+  subscriptions: Subscription[];
+  paused: boolean;
+  pause_reason: string | null;
+  runs: AutomationRun[];
+  cookie_check: CookieCheck | null;
+}
+async function automationRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await fetch(`/api/automation${path}`, {
+    method, cache: "no-store",
+    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  });
+  if (!response.ok) return asJson<T>(response);
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+export const getAutomation = () => automationRequest<AutomationState>("");
+export const addSubscription = (input: SubscriptionInput) => automationRequest<Subscription>("/subscriptions", "POST", input);
+export const updateSubscription = (id: string, input: Partial<SubscriptionInput>) => automationRequest<Subscription>(`/subscriptions/${encodeURIComponent(id)}`, "PATCH", input);
+export const deleteSubscription = (id: string) => automationRequest<void>(`/subscriptions/${encodeURIComponent(id)}`, "DELETE");
+export const triggerAutomation = (mode: AutomationMode, subscriptionId?: string) => automationRequest<{ accepted: number; skipped: number; paused: boolean }>("/trigger", "POST", { mode, ...(subscriptionId ? { subscription_id: subscriptionId } : {}) });
+export const pauseAutomation = (reason?: string) => automationRequest<unknown>("/pause", "POST", reason ? { reason } : {});
+export const resumeAutomation = () => automationRequest<unknown>("/resume", "POST", {});
+export const cancelAutomationRun = (id: string) => automationRequest<unknown>(`/runs/${encodeURIComponent(id)}/cancel`, "POST", {});
+export const checkAutomationCookies = (username?: string) => automationRequest<CookieCheck>("/cookies/check", "POST", username ? { username } : {});
+export const repositionHistory = (id: string) => automationRequest<{ reset: boolean }>(`/subscriptions/${encodeURIComponent(id)}/reposition`, "POST", {});
+export const redownloadPost = (id: string, postId: string) => automationRequest<unknown>(`/subscriptions/${encodeURIComponent(id)}/redownload`, "POST", { post_id: postId });
+
 export interface JobSummary {
   id: string;
   url: string;
@@ -62,6 +125,10 @@ export interface FileEntry {
   platform: string;
 }
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string, public retryAfterSeconds?: number) { super(message); }
+}
+
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
@@ -71,7 +138,9 @@ async function asJson<T>(res: Response): Promise<T> {
     } catch {
       /* keep statusText */
     }
-    throw new Error(detail);
+    const retryAfter = res.headers.get("Retry-After");
+    const seconds = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : undefined;
+    throw new ApiError(res.status, typeof detail === "string" ? detail : "请求参数不符合要求", seconds);
   }
   return (await res.json()) as T;
 }

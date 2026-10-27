@@ -148,6 +148,8 @@ class JobManager:
         self._procs: dict[str, asyncio.subprocess.Process] = {}
         self._semaphore = asyncio.BoundedSemaphore(max(1, settings.max_concurrent_jobs))
         self._lock = asyncio.Lock()
+        self.instagram_lock = asyncio.Lock()
+        self._instagram_holders: set[str] = set()
 
     # ------------------------------------------------------------------ creation
 
@@ -329,12 +331,18 @@ class JobManager:
             await self._semaphore.acquire()
             state.holds_slot = True
             if not state.pause_requested:
+                if state.platform == "instagram":
+                    await self.instagram_lock.acquire()
+                    self._instagram_holders.add(state.id)
                 state.status = JobStatus.RUNNING
                 return
             self._leave_slot(state)  # paused while we waited — give it straight back
 
     def _leave_slot(self, state: JobState) -> None:
         """Release the concurrency slot. Idempotent — BoundedSemaphore rejects an over-release."""
+        if state.id in self._instagram_holders:
+            self._instagram_holders.remove(state.id)
+            self.instagram_lock.release()
         if state.holds_slot:
             state.holds_slot = False
             self._semaphore.release()
@@ -416,6 +424,7 @@ class JobManager:
                     },
                 )
         finally:
+            self._leave_slot(state)
             state.ended_at = time.time()
             self._tasks.pop(state.id, None)
             self._procs.pop(state.id, None)

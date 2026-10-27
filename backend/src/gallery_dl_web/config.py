@@ -8,7 +8,7 @@ they are managed at runtime via the Settings UI and stored only in ``cookies_pat
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PACING_MODES = ("adaptive", "fixed")
@@ -95,6 +95,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
     max_concurrent_jobs: int = 2
+    automation_limit_cap: int = Field(default=1000, ge=1, le=10000)
+    automation_max_pages: int = Field(default=10, ge=1, le=1000)
+    automation_max_posts: int = Field(default=1000, ge=1, le=100000)
+    automation_request_budget: int = Field(default=100, ge=1, le=100000)
+    automation_run_timeout_seconds: int = Field(default=1800, ge=1, le=86400)
+    automation_cookie_check_cooldown_seconds: int = Field(default=60, ge=1, le=86400)
 
     # Interpreter used to spawn the per-job gallery-dl worker subprocess.
     # Empty string -> resolved to sys.executable at runtime.

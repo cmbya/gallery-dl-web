@@ -12,7 +12,7 @@ export function CookieForm() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    getSettings().then(setStatus).catch(() => {});
+    getSettings().then(setStatus).catch(() => setMsg({ kind: "err", text: "Cookie 配置状态读取失败，请刷新页面重试；当前配置状态未知。" }));
   }, []);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -86,6 +86,7 @@ export function CookieForm() {
           </label>
           <p className="text-xs text-base-content/60">兼容旧方式：也可仅填写 sessionid 的值。两种方式只能选一种，留空不会清除已保存内容。</p>
           <input
+            aria-label="Instagram sessionid"
             type="password"
             className="input input-bordered w-full"
             placeholder="sessionid"
@@ -106,12 +107,16 @@ export function CookieForm() {
             请粘贴 Netscape 格式的 <code>cookies.txt</code> （可通过浏览器扩展导出），或上传文件。<strong>这些 Cookie 可完全访问账号，请使用专用账号。</strong>
           </p>
           <textarea
+            aria-label="Facebook 完整 Cookie"
+            autoComplete="off"
+            spellCheck={false}
             className="textarea textarea-bordered w-full h-40 font-mono text-xs"
             placeholder={"# Netscape HTTP Cookie File\n.facebook.com\tTRUE\t/\tTRUE\t1900000000\tc_user\t…"}
             value={fb}
             onChange={(e) => setFb(e.target.value)}
           />
           <input
+            aria-label="上传 Facebook cookies.txt"
             type="file"
             accept=".txt,text/plain"
             className="file-input file-input-bordered file-input-sm"
@@ -121,7 +126,7 @@ export function CookieForm() {
       </div>
 
       {msg && (
-        <div className={`alert ${msg.kind === "ok" ? "alert-success" : "alert-error"} py-2 text-sm`}>
+        <div role={msg.kind === "err" ? "alert" : "status"} className={`alert ${msg.kind === "ok" ? "alert-success" : "alert-error"} py-2 text-sm`}>
           {msg.text}
         </div>
       )}

@@ -1,11 +1,11 @@
-# Production: build both services from source. Only the frontend is exposed to the host;
-# the backend is reachable via Docker DNS (frontend proxies /api/* to it).
-name: gallery-dl-web
+# 从当前检出的源码构建；默认 bridge 通过 links 连接后端。
+# 必须使用 docker compose up -d --build，不要拉取上游英文镜像。
+name: ins-net
 
 services:
   backend:
     build: ./backend
-    image: ghcr.io/lumduan/gallery-dl-web/backend:latest
+    image: gallery-dl-web-backend-cmbya:automation
     restart: unless-stopped
     network_mode: bridge
     environment:
@@ -40,7 +40,7 @@ services:
       STALL_BACKOFF: ${STALL_BACKOFF:-1.5}
       STALL_KILL_GRACE_SECONDS: ${STALL_KILL_GRACE_SECONDS:-10}
     volumes:
-      - /vol2/1000/docker/gallery-dl-web/data:/data
+      - /vol2/1000/docker/INS-NET/data:/data
       - /vol2/1000/图库/download:/downloads
     healthcheck:
       test:
@@ -57,7 +57,7 @@ services:
 
   frontend:
     build: ./frontend
-    image: ghcr.io/lumduan/gallery-dl-web/frontend:latest
+    image: gallery-dl-web-frontend-cmbya:automation
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8000

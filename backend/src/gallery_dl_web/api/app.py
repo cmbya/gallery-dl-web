@@ -14,12 +14,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from gallery_dl_web.api import (
+    routes_automation,
     routes_files,
     routes_health,
     routes_jobs,
     routes_profiles,
     routes_settings,
 )
+from gallery_dl_web.automation.service import AutomationService
 from gallery_dl_web.config import Settings, get_settings
 from gallery_dl_web.cookies.store import CookieStore
 from gallery_dl_web.files.index import FileIndex
@@ -110,12 +112,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.cookie_store.load()
     app.state.pacing_store.load()
+    app.state.automation.kick()
     gc_task = asyncio.create_task(_gc_loop(app.state.job_manager))
     zip_task = asyncio.create_task(_zip_ttl_loop(settings))
     logger.info("gallery-dl-web API ready (data_dir=%s)", settings.data_dir)
     try:
         yield
     finally:
+        await app.state.automation.close()
         gc_task.cancel()
         zip_task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -136,17 +140,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings, app.state.cookie_store, app.state.profile_store, app.state.pacing_store
     )
 
+    app.state.automation = AutomationService(
+        settings, app.state.cookie_store, app.state.job_manager.instagram_lock
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Accept"],
     )
 
     # /health at root (frontend proxy maps /health -> backend /health).
     app.include_router(routes_health.router)
     app.include_router(routes_jobs.router, prefix="/api")
+    app.include_router(routes_automation.router, prefix="/api")
     app.include_router(routes_settings.router, prefix="/api")
     app.include_router(routes_files.router, prefix="/api")
     app.include_router(routes_profiles.router, prefix="/api")

@@ -57,7 +57,7 @@ def _resolve_within(base: Path, rel: str) -> Path:
 
 
 def _entry(entry: dict[str, Any], platform: str, name: str) -> ProfileFileEntry:
-    fn = entry["filename"]
+    fn = str(Path(entry["path"]).relative_to(Path(platform) / name))
     base = f"/api/profiles/{platform}/{quote(name)}"
     return ProfileFileEntry(
         filename=fn,
@@ -72,10 +72,10 @@ def _entry(entry: dict[str, Any], platform: str, name: str) -> ProfileFileEntry:
 
 
 def _to_metadata(meta: dict[str, Any], platform: str, name: str) -> ProfileMetadata:
-    base = f"/api/profiles/{platform}/{quote(name)}"
     avatar_url: str | None = None
     if meta.get("avatar"):
-        avatar_url = f"{base}/file/{quote(Path(meta['avatar']).name)}"
+        relative_avatar = str(Path(meta["avatar"]).relative_to(Path(platform) / name))
+        avatar_url = f"/api/profiles/{platform}/{quote(name)}/file/{quote(relative_avatar)}"
     return ProfileMetadata(
         platform=platform,
         name=name,
@@ -94,9 +94,8 @@ def _to_summary(meta: dict[str, Any]) -> ProfileSummary:
     platform, name = meta["platform"], meta["name"]
     avatar_url: str | None = None
     if meta.get("avatar"):
-        avatar_url = (
-            f"/api/profiles/{platform}/{quote(name)}/file/{quote(Path(meta['avatar']).name)}"
-        )
+        relative_avatar = str(Path(meta["avatar"]).relative_to(Path(platform) / name))
+        avatar_url = f"/api/profiles/{platform}/{quote(name)}/file/{quote(relative_avatar)}"
     return ProfileSummary(
         platform=platform,
         name=name,
@@ -160,7 +159,7 @@ async def get_thumb(
     if not src.is_file():
         raise HTTPException(status_code=404, detail="file not found")
     try:
-        thumb = get_or_generate(settings, platform, name, Path(filename).name, src)
+        thumb = get_or_generate(settings, platform, name, filename, src)
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="thumbnail generation failed") from None
     return FileResponse(thumb, media_type="image/jpeg")

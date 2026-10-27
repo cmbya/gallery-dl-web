@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ class CookieStore:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._data: dict[str, Any] = {}
+        self.on_instagram_change: Callable[[], None] | None = None
 
     @property
     def path(self) -> Path:
@@ -149,6 +151,8 @@ class CookieStore:
                 parsed = parse_netscape(text)
                 self._data.setdefault("facebook", {})["cookies"] = parsed
         self.save()
+        if (ig_sessionid is not None or ig_cookies_text is not None) and self.on_instagram_change:
+            self.on_instagram_change()
 
     @staticmethod
     def mask(value: str | None) -> str:
