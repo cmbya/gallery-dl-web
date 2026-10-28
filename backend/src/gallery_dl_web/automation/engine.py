@@ -46,7 +46,13 @@ class Engine:
         self.store, self.backend = store, backend
         self.max_pages, self.max_posts = max_pages, max_posts
 
-    def run(self, subscription: dict[str, Any], mode: str) -> dict[str, Any]:
+    def run(
+        self,
+        subscription: dict[str, Any],
+        mode: str,
+        batch_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
         username = subscription["username"]
         limit = subscription[f"{mode}_limit"]
         result: dict[str, Any] = {
@@ -75,6 +81,10 @@ class Engine:
             if old and old["completed"]:
                 result["skipped"] += 1
                 return
+            if self.store.remaining(batch_id) <= 0:
+                raise StopRound("global_post_limit")
+            if mode == "refresh":
+                self.store.rotate_refresh(username, post_id)
             caption = post.get("caption") or {}
             title = caption.get("text", "") if isinstance(caption, dict) else str(caption)
             record = self.store.remember(
@@ -89,7 +99,7 @@ class Engine:
                 record["generation"],
             )
             if ok:
-                self.store.complete(username, post_id)
+                self.store.complete(username, post_id, batch_id, run_id)
                 result["completed"] += 1
             else:
                 result["failed"] += 1
@@ -132,20 +142,43 @@ class Engine:
                     pages += 1
                     cursor = page.next_cursor
                     cursors.add(cursor)
-            newest = 0
+            # FIFO deferred discoveries always precede the latest feed; only safe
+            # identity/title metadata is persisted, never expiring media URLs.
+            pending_nonpinned = 0
+            for pending in self.store.refresh_posts(username):
+                if result["checked"] >= self.max_posts:
+                    raise StopRound("scan_budget")
+                process(pending)
+                identifier = str(pending.get("pk") or pending.get("id") or pending.get("code"))
+                if (self.store.post(username, identifier) or {}).get("completed"):
+                    self.store.remove_refresh(username, identifier)
+                if not pending.get("is_pinned"):
+                    pending_nonpinned += 1
+                if pending_nonpinned >= limit:
+                    return result
+            newest = pending_nonpinned
             for _ in range(self.max_pages):
+                if self.store.remaining(batch_id) <= 0:
+                    raise StopRound("global_post_limit")
                 page = self.backend.page(username, cursor)
+                selected = []
                 for post in page.posts:
+                    if not (post.get("pk") or post.get("id") or post.get("code")):
+                        raise StopRound("unsupported_post")
+                    selected.append(post)
+                    if not (post.get("timeline_pinned_user_ids") or post.get("is_pinned")):
+                        newest += 1
+                    if newest >= limit:
+                        break
+                self.store.save_refresh(username, selected)
+                for post in selected:
                     if result["checked"] >= self.max_posts:
                         raise StopRound("scan_budget")
-                    pinned = bool(post.get("timeline_pinned_user_ids") or post.get("is_pinned"))
                     process(post)
-                    if mode == "refresh":
-                        if not pinned:
-                            newest += 1
-                        if newest >= limit:
-                            return result
-                if page.next_cursor is None:
+                    identifier = str(post.get("pk") or post.get("id") or post.get("code"))
+                    if (self.store.post(username, identifier) or {}).get("completed"):
+                        self.store.remove_refresh(username, identifier)
+                if newest >= limit or page.next_cursor is None:
                     return result
                 if page.next_cursor == cursor:
                     raise StopRound("needs_reposition")

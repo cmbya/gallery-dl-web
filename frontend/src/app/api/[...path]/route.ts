@@ -17,10 +17,10 @@ async function proxy(req: NextRequest, ctx: Ctx): Promise<Response> {
   const target = `${BACKEND_URL}/api/${path.join("/")}${url.search}`;
 
   const headers: Record<string, string> = {};
-  const ct = req.headers.get("content-type");
-  if (ct) headers["content-type"] = ct;
-  const accept = req.headers.get("accept");
-  if (accept) headers["accept"] = accept;
+  for (const name of ["content-type", "accept", "range", "if-range", "if-none-match", "if-modified-since"]) {
+    const value = req.headers.get(name);
+    if (value) headers[name] = value;
+  }
 
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
 
@@ -29,6 +29,7 @@ async function proxy(req: NextRequest, ctx: Ctx): Promise<Response> {
     upstream = await fetch(target, {
       method: req.method,
       headers,
+      signal: req.signal,
       body: hasBody ? await req.arrayBuffer() : undefined,
     });
   } catch (err) {
@@ -59,6 +60,10 @@ async function proxy(req: NextRequest, ctx: Ctx): Promise<Response> {
   if (cd) respHeaders.set("content-disposition", cd);
   const cl = upstream.headers.get("content-length");
   if (cl) respHeaders.set("content-length", cl);
+  for (const name of ["content-range", "accept-ranges", "etag", "last-modified", "x-content-type-options"]) {
+    const value = upstream.headers.get(name);
+    if (value) respHeaders.set(name, value);
+  }
   respHeaders.set("cache-control", "no-cache");
   respHeaders.set("x-accel-buffering", "no");
 
@@ -66,6 +71,7 @@ async function proxy(req: NextRequest, ctx: Ctx): Promise<Response> {
 }
 
 export const GET = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
+export const HEAD = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const POST = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const PATCH = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);
 export const PUT = (req: NextRequest, ctx: Ctx) => proxy(req, ctx);

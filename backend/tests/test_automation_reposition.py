@@ -40,6 +40,8 @@ def test_reposition_only_resets_history(tmp_path, status):
         assert media.read_bytes() == b"original"
         after_snapshot = srv.store.snapshot()
         before_snapshot["subscriptions"][0]["history_status"] = "ready"
+        assert before_snapshot["subscriptions"][0]["progress"]["history_deferred"] == 1
+        before_snapshot["subscriptions"][0]["progress"]["history_deferred"] = 0
         assert after_snapshot == before_snapshot
 
 

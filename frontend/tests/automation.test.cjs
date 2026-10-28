@@ -52,6 +52,15 @@ test('redirect reasons and sanitized diagnostic render in results and cookie che
   assert.ok(!render('AutomationDiagnostic', { diagnostic: { stage: 'SECRET_URL', target: 'SECRET_COOKIE', status: 9999 } }).includes('SECRET'));
 });
 
+test('cookie panel explains automatic enabled target and shows actual tested account', () => {
+  const html = render('CookieCheckPanel', { check: { login_status: 'unknown', posts_status: 'accessible', tested_username: 'alice' }, onChecked: async () => {} });
+  assert.match(html, /测试目标：@alice/);
+  assert.match(html, /已启用订阅/);
+  assert.match(html, /无已启用订阅时不测试帖子/);
+  const untested = render('CookieCheckPanel', { check: { login_status: 'authenticated', posts_status: 'not_tested', tested_username: null }, onChecked: async () => {} });
+  assert.match(untested, /未测试/);
+});
+
 test('normalizes usernames and profile URLs, rejects post URLs and foreign origins', () => {
   assert.equal(normalizeUsername(' https://www.instagram.com/Example/?hl=en '), 'example');
   assert.equal(normalizeUsername('@Example'), 'example');
@@ -237,6 +246,34 @@ test('completed history may be manually disabled without disabling refresh or de
     assert.match(ui.container.textContent, /最新刷新：已启用/);
     assert.match(ui.container.textContent, /历史补全：已关闭/);
     assert.ok(![...ui.container.querySelectorAll('button')].some((b) => b.textContent === '关闭历史补全'));
+  } finally { await ui.close(); global.fetch = original; }
+});
+
+test('global budget form saves independent modes, explains deferred posts, and displays batches', async () => {
+  const original = global.fetch; const writes = [];
+  const state = { subscriptions: [], runs: [], paused: false, pause_reason: null, cookie_check: null,
+    global_limits: { refresh: 20, history: 7 }, batches: [{ id: 'batch', mode: 'refresh', post_limit: 20, completed: 19 }] };
+  global.fetch = async (url, init) => {
+    if (init.method === 'GET') return new Response(JSON.stringify(state));
+    writes.push({ url, ...init }); Object.assign(state.global_limits, JSON.parse(init.body));
+    return new Response(JSON.stringify(state.global_limits));
+  };
+  const ui = await mount('SubscriptionDashboard');
+  try {
+    const form = ui.container.querySelector('[aria-label="跨博主每轮新增总限额"]');
+    assert.ok(form);
+    assert.equal(form.querySelector('[name=refresh]').value, '20');
+    assert.equal(form.querySelector('[name=history]').value, '7');
+    assert.match(ui.container.textContent, /归档重复不占额度/);
+    assert.match(ui.container.textContent, /不是网络请求上限/);
+    assert.match(ui.container.textContent, /延期/);
+    assert.match(ui.container.textContent, /19 \/ 20/);
+    await act(async () => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await tick(); });
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].url, '/api/automation/limits');
+    assert.equal(writes[0].method, 'PATCH');
+    assert.deepEqual(JSON.parse(writes[0].body), { refresh: 20, history: 7 });
+    assert.match(require('../src/lib/automation.ts').reasonLabel('global_post_limit'), /总限额/);
   } finally { await ui.close(); global.fetch = original; }
 });
 

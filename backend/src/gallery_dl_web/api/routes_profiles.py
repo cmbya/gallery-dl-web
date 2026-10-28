@@ -144,6 +144,42 @@ async def get_file(
     return FileResponse(full, filename=full.name)
 
 
+# Preview is deliberately separate: existing /file and ZIP URLs remain attachments.
+_PREVIEW_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
+}
+
+
+@router.api_route("/{platform}/{name}/preview/{filename:path}", methods=["GET", "HEAD"])
+async def preview_file(
+    platform: str,
+    name: str,
+    filename: str,
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
+    platform = _require_platform(platform)
+    name = _require_name(name)
+    full = _resolve_within(_profile_dir(settings, platform, name), filename)
+    media_type = _PREVIEW_TYPES.get(full.suffix.lower())
+    if not media_type or not full.is_file():
+        raise HTTPException(status_code=404, detail="media not found")
+    # Starlette streams the file and implements Range/If-Range, 206, 416 and HEAD.
+    return FileResponse(
+        full,
+        filename=full.name,
+        media_type=media_type,
+        content_disposition_type="inline",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
 @router.get("/{platform}/{name}/thumb/{filename:path}")
 async def get_thumb(
     platform: str,

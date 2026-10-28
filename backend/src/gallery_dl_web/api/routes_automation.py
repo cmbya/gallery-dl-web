@@ -70,6 +70,25 @@ async def snapshot(request: Request) -> dict[str, Any]:
     return service(request).store.snapshot()
 
 
+class GlobalLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    refresh: int | None = Field(default=None, ge=1, strict=True)
+    history: int | None = Field(default=None, ge=1, strict=True)
+
+
+@router.patch("/limits")
+async def update_limits(body: GlobalLimits, request: Request) -> dict[str, int]:
+    fields = body.model_dump(exclude_unset=True)
+    if any(value is None for value in fields.values()):
+        raise HTTPException(422, "fields cannot be null")
+    try:
+        return service(request).store.set_limits(
+            fields, service(request).settings.automation_limit_cap
+        )
+    except ValueError as exc:
+        raise error(exc) from None
+
+
 @router.post("/subscriptions")
 async def create(body: Subscription, request: Request) -> dict[str, Any]:
     try:

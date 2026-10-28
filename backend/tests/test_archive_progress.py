@@ -22,6 +22,8 @@ def test_unique_complete_posts_shared_across_modes_and_redownload(tmp_path):
     engine.run(sub, "refresh")
     assert store.get(sub["id"])["progress"] == {
         "completed": 1,
+        "refresh_deferred": 1,
+        "history_deferred": 0,
         "platform_total": None,
         "total_updated_at": None,
         "history_complete": False,

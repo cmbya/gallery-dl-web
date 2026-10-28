@@ -29,6 +29,8 @@ export interface AutomationResult {
   file_count?: number;
 }
 export interface ArchiveProgress {
+  refresh_deferred?: number;
+  history_deferred?: number;
   completed: number;
   platform_total: number | null;
   total_updated_at: number | null;
@@ -46,13 +48,24 @@ export interface AutomationRun extends AutomationResult {
   mode: AutomationMode;
 }
 export interface CookieCheck {
+  tested_username?: string | null;
   diagnostic?: AutomationDiagnostic | null;
   login_status: string;
   posts_status: string;
   checked_at?: number | string | null;
   reason?: string | null;
 }
+export interface GlobalLimits { refresh: number; history: number; }
+export interface AutomationBatch {
+  id: string;
+  mode: AutomationMode;
+  post_limit: number;
+  completed: number;
+  created_at: number;
+}
 export interface AutomationState {
+  global_limits: GlobalLimits;
+  batches: AutomationBatch[];
   subscriptions: Subscription[];
   paused: boolean;
   pause_reason: string | null;
@@ -68,6 +81,7 @@ async function automationRequest<T>(path: string, method = "GET", body?: unknown
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
+export const updateGlobalLimits = (input: GlobalLimits) => automationRequest<GlobalLimits>("/limits", "PATCH", input);
 export const getAutomation = () => automationRequest<AutomationState>("");
 export const addSubscription = (input: SubscriptionInput) => automationRequest<Subscription>("/subscriptions", "POST", input);
 export const updateSubscription = (id: string, input: Partial<SubscriptionInput>) => automationRequest<Subscription>(`/subscriptions/${encodeURIComponent(id)}`, "PATCH", input);

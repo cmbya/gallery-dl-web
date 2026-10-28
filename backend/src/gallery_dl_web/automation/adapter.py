@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
+import requests
 from gallery_dl import config, extractor, job, output
 
 from .engine import Page, StopRound
+from .query_cache import QueryCache
 from .store import safe_component
 
 
@@ -90,6 +94,49 @@ def redirect_target(source: str, location: str) -> tuple[str, str | None]:
         return "", "redirect_invalid"
 
 
+class ProfileDescription(HTMLParser):
+    """Read only declared descriptions, not arbitrary embedded users or script text."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.descriptions: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if tag == "meta" and (
+            (values.get("name") or "").lower() == "description"
+            or (values.get("property") or "").lower() == "og:description"
+        ):
+            self.descriptions.append(values.get("content") or "")
+
+
+def profile_description_total(response: Any, username: str) -> int | None:
+    """Conservative exact-count fallback from an already requested target homepage."""
+    url = urlsplit(response.url)
+    if (
+        response.status_code != 200
+        or url.scheme != "https"
+        or url.hostname not in {"instagram.com", "www.instagram.com"}
+        or url.path.strip("/").lower() != username.lower()
+        or "text/html" not in response.headers.get("Content-Type", "").lower()
+    ):
+        return None
+    parser = ProfileDescription()
+    parser.feed(response.text)
+    totals = set()
+    for description in parser.descriptions:
+        if not re.search(r"\(@" + re.escape(username) + r"\)", description, re.IGNORECASE):
+            continue
+        match = re.search(
+            r"(?<!\S)([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s+posts\b",
+            description,
+            re.IGNORECASE,
+        )
+        if match:
+            totals.add(int(match[1].replace(",", "")))
+    return totals.pop() if len(totals) == 1 else None
+
+
 class GalleryBackend:
     def __init__(
         self,
@@ -97,6 +144,7 @@ class GalleryBackend:
         cookies: dict[str, Any] | None,
         request_budget: int = 100,
         timeout: float = 30,
+        query_cache_path: Path | None = None,
     ) -> None:
         config.clear()
         config.set(("cache",), "file", ":memory:")
@@ -111,6 +159,7 @@ class GalleryBackend:
         config.set(("extractor",), "async", False)
         output.select = output.NullOutput
         self.downloads = downloads
+        self.query_cache = QueryCache(query_cache_path) if query_cache_path is not None else None
         self.remaining = request_budget
         self.extr: Any = None
         self.last_diagnostic: dict[str, Any] | None = None
@@ -118,9 +167,12 @@ class GalleryBackend:
 
     def initialize(self, username: str) -> Any:
         if self.extr is None:
+            self.username = username.lower()
             self.extr = extractor.find(f"https://www.instagram.com/{username}/posts/")
             self.extr.initialize()
             self.guard(self.extr)
+            if self.query_cache is not None:
+                self.query_cache.attach(self.extr)
             assign_user = self.extr._assign_user
 
             def observe(user: Any) -> Any:
@@ -196,6 +248,10 @@ class GalleryBackend:
                         },
                     )
                 response.history = history
+                if self.observe_user is not None:
+                    total = profile_description_total(response, self.username)
+                    if total is not None:
+                        self.observe_user(self.username, total)
                 return response
             raise StopRound("redirect_limit")
 
@@ -343,32 +399,46 @@ class GalleryBackend:
         extr = self.initialize(username or "instagram")
         result: dict[str, Any] = {
             "login_status": "unknown",
-            "posts_status": "unknown",
+            "posts_status": "unknown" if username else "not_tested",
             "reason": None,
         }
-        response = extr.session.get(
-            "https://www.instagram.com/api/v1/accounts/current_user/",
-            headers={"X-IG-App-ID": "936619743392459"},
-            timeout=20,
-            allow_redirects=False,
-        )
         try:
-            data = response.json()
-        except ValueError:
-            data = {}
-        if (
-            response.status_code == 200
-            and isinstance(data, dict)
-            and data.get("user", {}).get("pk")
-        ):
-            result["login_status"] = "authenticated"
-        elif response.status_code in {401, 403}:
-            result["login_status"] = "unknown"
-            result["reason"] = "identity_rejected"
-        else:
+            response = extr.session.get(
+                "https://www.instagram.com/api/v1/accounts/current_user/",
+                headers={"X-IG-App-ID": "936619743392459"},
+                timeout=20,
+                allow_redirects=False,
+            )
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+            if (
+                response.status_code == 200
+                and isinstance(data, dict)
+                and isinstance(data.get("user"), dict)
+                and data["user"].get("pk")
+            ):
+                result["login_status"] = "authenticated"
+            else:
+                result["reason"] = (
+                    "identity_rejected"
+                    if response.status_code in {401, 403}
+                    else "identity_unknown"
+                )
+        except StopRound as exc:
+            result["reason"] = exc.reason
+            result["diagnostic"] = exc.diagnostic
+            if exc.reason != "redirect_home":
+                if exc.reason == "invalid_session":
+                    result["login_status"] = "login_required"
+                return result
+        except requests.RequestException:
             result["reason"] = "identity_unknown"
         if username:
             try:
+                # Do not attribute an identity redirect to a later posts parse failure.
+                self.last_diagnostic = None
                 self.page(username, None)
                 result["posts_status"] = "accessible"
             except StopRound as exc:

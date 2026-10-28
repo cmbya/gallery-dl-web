@@ -44,6 +44,7 @@ const labels: Record<string, string> = {
   ready: "等待补全", needs_reposition: "需重新定位历史进度", challenge: "需要安全验证", stopped: "已停止", interrupted: "已中断",
 };
 const reasons: Record<string, string> = {
+  global_post_limit: "已达到跨博主本轮新增帖子总限额，未处理帖子延期至下轮（不是风控）",
   redirect: "收到无法确认的重定向（不代表 Cookie 无效）",
   redirect_home: "请求被重定向到首页，未取得所需数据",
   redirect_login: "请求被重定向到登录页，尚不能确认会话有效性",

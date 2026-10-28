@@ -93,7 +93,8 @@ async def test_cookie_check_identity_posts_and_lock(tmp_path):
     lock.release()
     result = await task
     assert result["login_status"] == "authenticated" and result["posts_status"] == "restricted"
-    assert calls[0]["username"] == "alice" and calls[0]["request_budget"] <= 4
+    assert calls[0]["username"] == "alice"
+    assert calls[0]["request_budget"] == cfg.automation_request_budget
     assert service.store.snapshot()["paused"]
     cookies.update(ig_sessionid="replacement")
     assert service.store.snapshot()["cookie_check"] is None

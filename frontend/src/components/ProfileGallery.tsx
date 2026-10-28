@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { deleteProfile, getProfile, profileZipUrl, type ProfileMetadata } from "@/lib/api";
+import { MediaPreview } from "@/components/MediaPreview";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -17,6 +18,7 @@ export function ProfileGallery({ platform, name }: { platform: string; name: str
   const [meta, setMeta] = useState<ProfileMetadata | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   useEffect(() => {
     getProfile(platform, name)
@@ -43,6 +45,8 @@ export function ProfileGallery({ platform, name }: { platform: string; name: str
 
   if (err) return <div className="alert alert-error">{err}</div>;
   if (meta === null) return <p className="text-base-content/60">正在加载…</p>;
+
+  const media = [...meta.images, ...meta.videos];
 
   return (
     <div className="flex flex-col gap-4">
@@ -79,35 +83,26 @@ export function ProfileGallery({ platform, name }: { platform: string; name: str
         <p className="text-base-content/60">暂无媒体文件。</p>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-          {meta.images.map((f) => (
-            <a
-              key={f.path}
-              href={f.file_url}
-              target="_blank"
-              rel="noreferrer"
-              className="aspect-square overflow-hidden bg-base-200 rounded"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={f.thumb_url}
-                alt={f.filename}
-                loading="lazy"
-                className="w-full h-full object-cover hover:opacity-80 transition-opacity"
-              />
-            </a>
-          ))}
-          {meta.videos.map((f) => (
-            <a
-              key={f.path}
-              href={f.file_url}
-              target="_blank"
-              rel="noreferrer"
-              className="aspect-square overflow-hidden bg-base-300 rounded flex items-center justify-center text-3xl"
-            >
-              🎬
-            </a>
+          {media.map((f, index) => (
+            <div key={f.path} className="min-w-0 flex flex-col gap-1">
+              <button type="button" aria-label={`预览 ${f.filename}`}
+                onClick={() => setPreviewIndex(index)}
+                className="aspect-square overflow-hidden bg-base-200 rounded flex items-center justify-center focus-visible:outline-2 focus-visible:outline-primary">
+                {f.kind === "video" ? (
+                  <span className="text-3xl" aria-hidden="true">🎬</span>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={f.thumb_url} alt={f.filename} loading="lazy"
+                    className="w-full h-full object-cover hover:opacity-80 transition-opacity" />
+                )}
+              </button>
+              <a className="btn btn-ghost btn-xs" href={f.file_url} download aria-label={`下载 ${f.filename}`}>下载</a>
+            </div>
           ))}
         </div>
+      )}
+      {previewIndex !== null && (
+        <MediaPreview files={media} initialIndex={previewIndex} onClose={() => setPreviewIndex(null)} />
       )}
     </div>
   );

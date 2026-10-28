@@ -52,6 +52,8 @@ def post_folder(title: str, post_id: str) -> str:
 def post_metadata(post: dict[str, Any]) -> dict[str, Any]:
     """Allowlist durable identity/title only; never retain feed responses or CDN URLs."""
     result: dict[str, Any] = {key: str(post[key]) for key in ("id", "pk", "code") if post.get(key)}
+    if post.get("is_pinned") or post.get("timeline_pinned_user_ids"):
+        result["is_pinned"] = True
     caption = post.get("caption")
     title = caption.get("text", "") if isinstance(caption, dict) else caption
     if title:
@@ -66,6 +68,14 @@ class AutomationStore:
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
         PRAGMA journal_mode=WAL;
+        CREATE TABLE IF NOT EXISTS batches(
+            id TEXT PRIMARY KEY,mode TEXT NOT NULL,post_limit INTEGER NOT NULL,created_at REAL);
+        CREATE TABLE IF NOT EXISTS batch_posts(
+            batch_id TEXT,run_id TEXT,username TEXT,post_id TEXT,
+            PRIMARY KEY(batch_id,username,post_id));
+        CREATE TABLE IF NOT EXISTS refresh_pending(
+            position INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL,
+            post_id TEXT NOT NULL,payload TEXT NOT NULL,UNIQUE(username,post_id));
         CREATE TABLE IF NOT EXISTS subscriptions(
             id TEXT PRIMARY KEY,username TEXT UNIQUE NOT NULL,config TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -91,6 +101,100 @@ class AutomationStore:
             WHERE status IN ('queued','running');
         """)
         self.db.commit()
+
+    def limits(self) -> dict[str, int]:
+        value = self.get_state("global_limits", {"refresh": 20, "history": 20})
+        return {"refresh": int(value["refresh"]), "history": int(value["history"])}
+
+    def set_limits(self, fields: dict[str, int], cap: int = 1000) -> dict[str, int]:
+        if any(
+            k not in {"refresh", "history"} or type(v) is not int or not 1 <= v <= cap
+            for k, v in fields.items()
+        ):
+            raise ValueError(f"global limits must be integers between 1 and {cap}")
+        value = {**self.limits(), **fields}
+        self.set_state("global_limits", value)
+        return value
+
+    def batches(self) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for row in self.db.execute(
+                "SELECT b.*,COUNT(p.post_id) AS completed FROM batches b LEFT JOIN batch_posts p "
+                "ON p.batch_id=b.id GROUP BY b.id ORDER BY b.rowid DESC LIMIT 200"
+            )
+        ]
+
+    def active_batch(self, mode: str) -> str | None:
+        for row in self.db.execute(
+            "SELECT payload FROM runs WHERE mode=? AND status IN ('queued','running')", (mode,)
+        ):
+            value = json.loads(row[0])
+            if value.get("batch_id"):
+                return str(value["batch_id"])
+        return None
+
+    def new_batch(self, mode: str) -> str:
+        identifier = uuid.uuid4().hex
+        with self.db:
+            self.db.execute(
+                "INSERT INTO batches VALUES (?,?,?,?)",
+                (identifier, mode, self.limits()[mode], time.time()),
+            )
+        return identifier
+
+    def remaining(self, batch_id: str | None) -> int:
+        if batch_id is None:
+            return 2147483647
+        row = self.db.execute(
+            "SELECT post_limit-(SELECT COUNT(*) FROM batch_posts WHERE batch_id=?) "
+            "FROM batches WHERE id=?",
+            (batch_id, batch_id),
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def run_completed(self, run_id: str) -> int:
+        return int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM batch_posts WHERE run_id=?", (run_id,)
+            ).fetchone()[0]
+        )
+
+    def refresh_posts(self, username: str) -> list[dict[str, Any]]:
+        return [
+            json.loads(row[0])
+            for row in self.db.execute(
+                "SELECT payload FROM refresh_pending WHERE username=? ORDER BY position",
+                (username,),
+            )
+        ]
+
+    def save_refresh(self, username: str, posts: list[dict[str, Any]]) -> None:
+        with self.db:
+            for post in posts:
+                identifier = str(post.get("pk") or post.get("id") or post.get("code") or "")
+                if not identifier:
+                    raise ValueError("post identity missing")
+                if not (self.post(username, identifier) or {}).get("completed"):
+                    self.db.execute(
+                        "INSERT OR IGNORE INTO refresh_pending(username,post_id,payload) "
+                        "VALUES (?,?,?)",
+                        (username, identifier, json.dumps(post_metadata(post))),
+                    )
+
+    def rotate_refresh(self, username: str, post_id: str) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE refresh_pending SET position=(SELECT COALESCE(MAX(position),0)+1 "
+                "FROM refresh_pending) WHERE username=? AND post_id=?",
+                (username, post_id),
+            )
+
+    def remove_refresh(self, username: str, post_id: str) -> None:
+        with self.db:
+            self.db.execute(
+                "DELETE FROM refresh_pending WHERE username=? AND post_id=?", (username, post_id)
+            )
 
     def close(self) -> None:
         self.db.close()
@@ -147,6 +251,12 @@ class AutomationStore:
         ).fetchone()
         return {
             "completed": counts[0],
+            "refresh_deferred": self.db.execute(
+                "SELECT COUNT(*) FROM refresh_pending WHERE username=?", (username,)
+            ).fetchone()[0],
+            "history_deferred": self.db.execute(
+                "SELECT COUNT(*) FROM history_pending WHERE username=?", (username,)
+            ).fetchone()[0],
             "platform_total": total[0] if total else None,
             "total_updated_at": total[1] if total else None,
             "history_complete": self.feed_terminal(username) and queued is None and counts[1] == 0,
@@ -318,11 +428,25 @@ class AutomationStore:
         assert result is not None
         return result
 
-    def complete(self, username: str, post_id: str) -> None:
+    def complete(
+        self, username: str, post_id: str, batch_id: str | None = None, run_id: str | None = None
+    ) -> None:
         with self.db:
+            # One transaction makes finalized-post accounting survive worker loss.
+            self.db.execute("BEGIN IMMEDIATE")
+            old = self.post(username, post_id)
+            if old and old["completed"]:
+                return
+            if self.remaining(batch_id) <= 0:
+                raise ValueError("batch budget exhausted")
             self.db.execute(
                 "UPDATE posts SET completed=1 WHERE username=? AND post_id=?", (username, post_id)
             )
+            if batch_id:
+                self.db.execute(
+                    "INSERT INTO batch_posts VALUES (?,?,?,?)",
+                    (batch_id, run_id, username, post_id),
+                )
 
     def pending(self, username: str, limit: int) -> list[dict[str, Any]]:
         return [
@@ -349,8 +473,9 @@ class AutomationStore:
             )
         return True
 
-    def queue(self, username: str, mode: str) -> dict[str, Any] | None:
+    def queue(self, username: str, mode: str, batch_id: str | None = None) -> dict[str, Any] | None:
         run = {
+            "batch_id": batch_id,
             "id": uuid.uuid4().hex,
             "username": username,
             "mode": mode,
@@ -405,7 +530,11 @@ class AutomationStore:
     def recover(self) -> None:
         # An interrupted run is never silently restarted; its current page and media remain durable.
         for row in self.db.execute("SELECT payload FROM runs WHERE status='running'").fetchall():
-            self.update_run(json.loads(row[0]), status="interrupted", reason="server_restarted")
+            run = json.loads(row[0])
+            fields: dict[str, Any] = {"status": "interrupted", "reason": "server_restarted"}
+            if run.get("batch_id"):
+                fields["completed"] = self.run_completed(run["id"])
+            self.update_run(run, **fields)
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -413,4 +542,6 @@ class AutomationStore:
             **self.get_state("pause", {"paused": False, "pause_reason": None}),
             "runs": self.runs(),
             "cookie_check": self.get_state("cookie_check"),
+            "global_limits": self.limits(),
+            "batches": self.batches(),
         }

@@ -184,7 +184,15 @@ def test_api_contract_and_cookie_invalidation(tmp_path):
     app = create_app(settings(tmp_path))
     with TestClient(app) as client:
         initial = client.get("/api/automation").json()
-        assert set(initial) == {"subscriptions", "paused", "pause_reason", "runs", "cookie_check"}
+        assert set(initial) == {
+            "subscriptions",
+            "paused",
+            "pause_reason",
+            "runs",
+            "cookie_check",
+            "global_limits",
+            "batches",
+        }
         result = client.post(
             "/api/automation/subscriptions",
             json={

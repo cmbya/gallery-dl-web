@@ -23,6 +23,8 @@ export function CookieCheckPanel({ check, disabled = false, onChecked }: {
         <div><dt className="font-medium">帖子访问状态</dt><dd>{statusLabel(check?.posts_status)}</dd></div>
       </dl>
       <p className="text-sm">最近检查：{formatTime(check?.checked_at)}</p>
+      {check?.tested_username && <p className="text-sm">测试目标：@{check.tested_username}</p>}
+      <p className="text-sm text-base-content/70">留空选择一个已启用订阅；无已启用订阅时不测试帖子，只检查登录身份。身份未知不代表帖子无法访问。</p>
       <AutomationDiagnostic diagnostic={check?.diagnostic} />
       {check?.reason && <p className="text-sm break-words">说明：{reasonLabel(check.reason)}</p>}
       <form className="flex flex-col gap-2" onSubmit={async (event) => {

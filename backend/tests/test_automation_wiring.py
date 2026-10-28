@@ -52,7 +52,7 @@ def test_cli_connection_error_nonzero(monkeypatch):
 @pytest.mark.parametrize("reason", ["invalid_session", "challenge", "redirect"])
 def test_worker_check_sanitized(monkeypatch, tmp_path, reason):
     class Adapter:
-        def __init__(self, *args):
+        def __init__(self, *args, **kwargs):
             pass
 
         def check(self, username):
@@ -60,7 +60,13 @@ def test_worker_check_sanitized(monkeypatch, tmp_path, reason):
 
     monkeypatch.setattr(worker, "GalleryBackend", Adapter)
     result = worker.execute(
-        {"downloads": str(tmp_path), "operation": "check", "request_budget": 4, "timeout": 20}
+        {
+            "downloads": str(tmp_path),
+            "database": str(tmp_path / "state.sqlite"),
+            "operation": "check",
+            "request_budget": 4,
+            "timeout": 20,
+        }
     )
     assert result["reason"] == reason
     assert result["login_status"] == (
@@ -70,7 +76,7 @@ def test_worker_check_sanitized(monkeypatch, tmp_path, reason):
 
 def test_worker_drives_same_engine(monkeypatch, tmp_path):
     class Adapter:
-        def __init__(self, *args):
+        def __init__(self, *args, **kwargs):
             pass
 
         def page(self, username, cursor):

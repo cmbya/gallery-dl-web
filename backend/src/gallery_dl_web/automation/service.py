@@ -65,6 +65,15 @@ class AutomationService:
         )
         if self.store.snapshot()["paused"]:
             return {"accepted": 0, "skipped": len(subscriptions), "paused": True}
+        # An in-flight trigger owns the mode's batch. Repeated manual/scheduler
+        # triggers cannot requeue an already-finished prefix with a fresh budget.
+        if self.store.active_batch(mode):
+            return {"accepted": 0, "skipped": len(subscriptions), "paused": False}
+        batch_id = self.store.new_batch(mode)
+        after = self.store.get_state(f"rotation_{mode}", "")
+        subscriptions = sorted(
+            subscriptions, key=lambda sub: (sub["username"] <= after, sub["username"])
+        )
         accepted = skipped = 0
         for sub in subscriptions:
             if (
@@ -82,7 +91,7 @@ class AutomationService:
                 )
             ):
                 skipped += 1
-            elif self.store.queue(sub["username"], mode):
+            elif self.store.queue(sub["username"], mode, batch_id):
                 accepted += 1
             else:
                 skipped += 1
@@ -110,7 +119,11 @@ class AutomationService:
                 latest = next((r for r in self.store.runs() if r["id"] == run["id"]), None)
                 if latest is None or latest["status"] != "queued":
                     continue
+                if self.store.remaining(run.get("batch_id")) <= 0:
+                    self.store.update_run(run, status="stopped", reason="global_post_limit")
+                    continue
                 self.current = run["id"]
+                self.store.set_state(f"rotation_{run['mode']}", run["username"])
                 self.store.update_run(run, status="running")
                 try:
                     result = await self.runner(run, sub)
@@ -127,6 +140,8 @@ class AutomationService:
                 except Exception:
                     self.store.update_run(run, status="failed", reason="runner_error")
                 finally:
+                    if run.get("batch_id"):
+                        self.store.update_run(run, completed=self.store.run_completed(run["id"]))
                     self.current = None
                     # Include partial/cancelled runs; finalized files must be visible immediately.
                     with contextlib.suppress(Exception):
@@ -200,7 +215,13 @@ class AutomationService:
         self, run: dict[str, Any], subscription: dict[str, Any]
     ) -> dict[str, Any]:
         return await self._subprocess(
-            {**self.payload(), "mode": run["mode"], "subscription": subscription}
+            {
+                **self.payload(),
+                "mode": run["mode"],
+                "subscription": subscription,
+                "batch_id": run.get("batch_id"),
+                "run_id": run["id"],
+            }
         )
 
     async def wait_idle(self) -> None:
@@ -233,6 +254,10 @@ class AutomationService:
     async def check_cookies(self, username: str | None = None) -> dict[str, Any]:
         if username is not None:
             username = normalize_username(username)
+        else:
+            username = next(
+                (sub["username"] for sub in self.store.subscriptions() if sub["enabled"]), None
+            )
         now = time.time()
         if (
             now - self.store.get_state("cookie_check_requested_at", 0)
@@ -260,7 +285,9 @@ class AutomationService:
                         **self.payload(),
                         "operation": "check",
                         "username": username,
-                        "request_budget": min(4, self.settings.automation_request_budget),
+                        # Use the configured finite budget: bootstrap/token discovery may
+                        # require more than four sends. The worker timeout still applies.
+                        "request_budget": self.settings.automation_request_budget,
                     }
                 )
             result = {
@@ -271,6 +298,7 @@ class AutomationService:
             }
             if result.get("reason") in GLOBAL_STOPS:
                 self.store.pause(result["reason"])
+        result["tested_username"] = username
         result["checked_at"] = now
         if generation != self.cookie_generation:
             return {
