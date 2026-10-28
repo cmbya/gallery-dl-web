@@ -39,6 +39,38 @@ async function mount(name, props) {
 function submit(container) { container.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); }
 const input = { username: '@Example', enabled: true, refresh_enabled: true, refresh_limit: 20, history_enabled: true, history_limit: 100 };
 
+test('recent runs paginate ten at a time and clamp after a refresh without deleting records', async () => {
+  const runs = Array.from({ length: 23 }, (_, i) => ({ id: `run-${i}`, username: `user${i}`, mode: 'refresh', status: 'completed', checked: 1, completed: 1, skipped: 0, failed: 0 }));
+  let state = { subscriptions: [], paused: false, runs, cookie_check: null };
+  const originalGetAutomation = api.getAutomation;
+  api.getAutomation = async () => state;
+  const ui = await mount('SubscriptionDashboard', {});
+  const section = () => ui.container.querySelector('[aria-labelledby="runs-title"]');
+  const rows = () => [...section().querySelectorAll('article')];
+  const button = (name) => [...section().querySelectorAll('button')].find((node) => node.textContent === name);
+  try {
+    assert.equal(rows().length, 10);
+    assert.match(rows()[0].textContent, /@user0 /);
+    assert.equal(button('上一页').disabled, true);
+    await act(async () => button('下一页').click());
+    assert.equal(rows().length, 10);
+    assert.match(rows()[0].textContent, /@user10 /);
+    await act(async () => button('下一页').click());
+    assert.equal(rows().length, 3);
+    assert.match(section().textContent, /第 3 \/ 3 页/);
+    assert.equal(button('下一页').disabled, true);
+    state = { ...state, runs: runs.slice(0, 2) };
+    await act(async () => { [...ui.container.querySelectorAll('button')].find((node) => node.textContent === '刷新状态').click(); await tick(); });
+    assert.equal(rows().length, 2);
+    assert.match(section().textContent, /第 1 \/ 1 页/);
+    state = { ...state, runs: [] };
+    await act(async () => { [...ui.container.querySelectorAll('button')].find((node) => node.textContent === '刷新状态').click(); await tick(); });
+    assert.match(section().textContent, /尚无运行记录/);
+    assert.equal(section().querySelector('nav'), null);
+    assert.equal(runs.length, 23);
+  } finally { await ui.close(); api.getAutomation = originalGetAutomation; }
+});
+
 test('redirect reasons and sanitized diagnostic render in results and cookie checks', () => {
   const { reasonLabel } = require('../src/lib/automation.ts');
   for (const reason of ['redirect', 'redirect_home', 'redirect_login', 'redirect_challenge', 'redirect_external', 'redirect_insecure', 'redirect_invalid', 'redirect_missing_location', 'redirect_unsupported', 'redirect_loop', 'redirect_limit', 'query_error', 'scan_budget']) assert.ok(!reasonLabel(reason).includes('未识别'));

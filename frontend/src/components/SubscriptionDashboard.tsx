@@ -18,6 +18,9 @@ export function SubscriptionDashboard() {
   const [editing, setEditing] = useState<string | null>(null);
   const [resetId, setResetId] = useState<string | null>(null);
   const [postId, setPostId] = useState("");
+  const [runPage, setRunPage] = useState(1);
+  const runPageCount = Math.max(1, Math.ceil((data?.runs.length ?? 0) / 10));
+  const currentRunPage = Math.min(runPage, runPageCount);
   const mounted = useRef(false);
   const fetching = useRef<Promise<boolean> | null>(null);
   const actionLock = useRef(false);
@@ -27,7 +30,10 @@ export function SubscriptionDashboard() {
     const request = (async () => {
       try {
         const next = await getAutomation();
-        if (mounted.current) { setData(next); setError(""); }
+        if (mounted.current) {
+          setData(next); setError("");
+          setRunPage((page) => Math.min(page, Math.max(1, Math.ceil(next.runs.length / 10))));
+        }
         return true;
       } catch (err) {
         if (mounted.current) setError(err instanceof Error ? `状态读取失败：${err.message}` : "状态读取失败，请重试。");
@@ -137,11 +143,16 @@ export function SubscriptionDashboard() {
         <h2 id="runs-title" className="text-xl font-semibold">最近运行</h2>
         <p className="text-sm text-base-content/70">统计以帖子为单位；一个帖子可能包含多个文件。仅当有排队或运行任务且页面可见时，每 15 秒刷新状态。</p>
         {data.runs.length === 0 && <p>尚无运行记录。</p>}
-        {data.runs.map((run) => <article className="border border-base-300 rounded-lg p-4 flex flex-col gap-2" key={run.id} aria-label={`${run.username} 的${run.mode === "refresh" ? "刷新" : "历史补全"}运行`}>
+        {data.runs.slice((currentRunPage - 1) * 10, currentRunPage * 10).map((run) => <article className="border border-base-300 rounded-lg p-4 flex flex-col gap-2" key={run.id} aria-label={`${run.username} 的${run.mode === "refresh" ? "刷新" : "历史补全"}运行`}>
           <h3 className="font-semibold break-all">@{run.username} · {run.mode === "refresh" ? "最新刷新" : "历史补全"}</h3>
           <AutomationResult result={run} />
           {isActiveRun(run.status) && <button className="btn btn-sm btn-outline self-start" disabled={busy} aria-label={`取消 ${run.username} 的运行 ${run.id}`} onClick={() => void act(() => cancelAutomationRun(run.id), "已请求取消运行；已下载文件保留。")}>取消运行</button>}
         </article>)}
+        {data.runs.length > 0 && <nav aria-label="运行记录分页" className="flex flex-wrap items-center gap-3">
+          <button type="button" className="btn btn-sm" disabled={currentRunPage === 1} onClick={() => setRunPage(currentRunPage - 1)}>上一页</button>
+          <span className="text-sm" aria-live="polite">第 {currentRunPage} / {runPageCount} 页 · 共 {data.runs.length} 条（最近最多 200 条，每页 10 条）</span>
+          <button type="button" className="btn btn-sm" disabled={currentRunPage === runPageCount} onClick={() => setRunPage(currentRunPage + 1)}>下一页</button>
+        </nav>}
       </section>
     </>}
   </div>;
