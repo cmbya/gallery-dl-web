@@ -60,6 +60,23 @@ test('gallery opens full image inline, navigates to playable video and keeps sep
   } finally { await ui.close(); }
 });
 
+test('preview replaces only the operation segment for a profile named file, preserving encoded nested paths', async () => {
+  const entries = ['image', 'video'].map((kind) => {
+    const filename = `file/nested%20folder/a%23b%25.${kind === 'image' ? 'jpg' : 'mp4'}`;
+    return { ...file(filename, kind), path: `facebook/file/${filename}`, file_url: `/api/profiles/facebook/file/file/${filename}` };
+  });
+  const ui = await mount({ ...metadata, name: 'file', images: [entries[0]], videos: [entries[1]] });
+  try {
+    await click(button(ui, `预览 ${entries[0].filename}`));
+    for (const entry of entries) {
+      const dialog = ui.container.querySelector('dialog');
+      assert.equal(dialog.querySelector(entry.kind === 'image' ? 'img' : 'video').getAttribute('src'), `/api/profiles/facebook/file/preview/${entry.filename}`);
+      assert.equal(dialog.querySelector('a[download]').getAttribute('href'), entry.file_url);
+      if (entry.kind === 'image') await click(button(ui, '下一项'));
+    }
+  } finally { await ui.close(); }
+});
+
 test('preview traps keyboard focus, handles cancel/backdrop, stops video on close and displays errors', async () => {
   const ui = await mount();
   try {

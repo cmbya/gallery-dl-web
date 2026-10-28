@@ -85,11 +85,14 @@ class QueryCache:
     def read(self) -> dict[str, Info] | None:
         try:
             fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)
-            with os.fdopen(fd, "r", encoding="utf-8") as stream:
+            with os.fdopen(fd, "rb") as stream:
                 if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                     raise ValueError("not_regular")
                 os.fchmod(stream.fileno(), 0o600)
-                record = json.loads(stream.read(MAX_BYTES + 1))
+                payload = stream.read(MAX_BYTES + 1)
+                if len(payload) > MAX_BYTES:
+                    raise ValueError("too_large")
+                record = json.loads(payload)
             if set(record) != {"version", "expires", "operations"}:
                 raise ValueError("invalid_schema")
             now = time.time()
@@ -105,21 +108,24 @@ class QueryCache:
             return safe_map(record["operations"])
         except FileNotFoundError:
             return None
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, RecursionError):
             log.warning("instagram_query_cache_invalid")
             return None
 
     def write(self, operations: dict[str, Info]) -> None:
         temporary = None
         try:
+            payload = json.dumps(
+                {"version": VERSION, "expires": time.time() + TTL, "operations": operations},
+                separators=(",", ":"),
+            ).encode("utf-8")
+            if len(payload) > MAX_BYTES:
+                log.warning("instagram_query_cache_too_large")
+                return
             fd, temporary = tempfile.mkstemp(prefix=".instagram-query-", dir=self.path.parent)
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            with os.fdopen(fd, "wb") as stream:
                 os.fchmod(stream.fileno(), 0o600)
-                json.dump(
-                    {"version": VERSION, "expires": time.time() + TTL, "operations": operations},
-                    stream,
-                    separators=(",", ":"),
-                )
+                stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, self.path)

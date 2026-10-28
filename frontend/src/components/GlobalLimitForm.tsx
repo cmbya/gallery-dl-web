@@ -8,6 +8,15 @@ export function GlobalLimitForm({ limits, busy, onSaved }: { limits: GlobalLimit
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const lock = useRef(false);
+  const [serverLimits, setServerLimits] = useState(limits);
+  if (limits.refresh !== serverLimits.refresh || limits.history !== serverLimits.history) {
+    // Sync untouched fields during render so a server refresh cannot reset local edits.
+    setValue({
+      refresh: value.refresh === serverLimits.refresh ? limits.refresh : value.refresh,
+      history: value.history === serverLimits.history ? limits.history : value.history,
+    });
+    setServerLimits(limits);
+  }
   return <form aria-label="跨博主每轮新增总限额" className="flex flex-col gap-2" onSubmit={async (event) => {
     event.preventDefault();
     if (busy || lock.current) return;

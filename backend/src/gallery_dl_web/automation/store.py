@@ -125,13 +125,40 @@ class AutomationStore:
             )
         ]
 
+    def batch_runs(self, batch_id: str) -> dict[str, dict[str, Any]]:
+        """Latest attempt per member, without the UI's 200-run retention window."""
+        result = {}
+        for row in self.db.execute("SELECT payload FROM runs ORDER BY rowid"):
+            run = json.loads(row[0])
+            if run.get("batch_id") == batch_id:
+                result[run["username"]] = run
+        return result
+
     def active_batch(self, mode: str) -> str | None:
-        for row in self.db.execute(
-            "SELECT payload FROM runs WHERE mode=? AND status IN ('queued','running')", (mode,)
-        ):
-            value = json.loads(row[0])
-            if value.get("batch_id"):
-                return str(value["batch_id"])
+        # Persist ownership even when the last member was cancelled or interrupted.
+        # Falling back to the latest batch also upgrades databases created before this key.
+        latest = self.db.execute(
+            "SELECT id FROM batches WHERE mode=? ORDER BY rowid DESC LIMIT 1", (mode,)
+        ).fetchone()
+        identifier = self.get_state(f"active_batch_{mode}", latest[0] if latest else None)
+        if identifier:
+            runs = self.batch_runs(identifier).values()
+            eligible = {
+                sub["username"]
+                for sub in self.subscriptions()
+                if sub["enabled"]
+                and sub[f"{mode}_enabled"]
+                and (mode != "history" or sub["history_status"] != "needs_reposition")
+            }
+            if any(r["status"] in {"queued", "running"} for r in runs) or (
+                self.remaining(identifier) > 0
+                and any(
+                    r["status"] in {"cancelled", "interrupted"} and r["username"] in eligible
+                    for r in runs
+                )
+            ):
+                return str(identifier)
+            self.set_state(f"active_batch_{mode}", None)
         return None
 
     def new_batch(self, mode: str) -> str:
@@ -140,6 +167,10 @@ class AutomationStore:
             self.db.execute(
                 "INSERT INTO batches VALUES (?,?,?,?)",
                 (identifier, mode, self.limits()[mode], time.time()),
+            )
+            self.db.execute(
+                "INSERT OR REPLACE INTO state VALUES (?,?)",
+                (f"active_batch_{mode}", json.dumps(identifier)),
             )
         return identifier
 

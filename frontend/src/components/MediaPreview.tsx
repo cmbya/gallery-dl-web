@@ -14,6 +14,8 @@ export function MediaPreview({ files, initialIndex, onClose }: {
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const file = files[index];
+  // Match the fixed route prefix, not a profile name or nested filename named "file".
+  const previewUrl = file.file_url.replace(/^(\/api\/profiles\/[^/]+\/[^/]+\/)file\//, "$1preview/");
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -69,12 +71,12 @@ export function MediaPreview({ files, initialIndex, onClose }: {
         </div>
         <div className="flex min-h-0 items-center justify-center bg-neutral text-neutral-content rounded">
           {file.kind === "video" ? (
-            <video key={file.path} src={file.file_url.replace("/file/", "/preview/")}
+            <video key={file.path} src={previewUrl}
               controls playsInline tabIndex={0} preload="metadata" aria-label={file.filename}
               className="max-h-[65dvh] w-full object-contain" onError={() => setFailed(true)} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={file.path} src={file.file_url.replace("/file/", "/preview/")} alt={file.filename}
+            <img key={file.path} src={previewUrl} alt={file.filename}
               className="max-h-[65dvh] max-w-full object-contain" onError={() => setFailed(true)} />
           )}
         </div>

@@ -130,6 +130,8 @@ class Engine:
                         if self.store.history_status(username) == "exhausted":
                             result["reason"] = "exhausted"
                         return result
+                    if self.store.remaining(batch_id) <= 0:
+                        raise StopRound("global_post_limit")
                     if result["checked"] >= self.max_posts or pages >= self.max_pages:
                         raise StopRound("scan_budget")
                     page = self.backend.page(username, cursor)

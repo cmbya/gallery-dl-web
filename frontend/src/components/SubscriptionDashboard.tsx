@@ -88,7 +88,7 @@ export function SubscriptionDashboard() {
           <button className="btn" disabled={busy || data.paused || !data.subscriptions.some((s) => s.enabled && s.refresh_enabled)} onClick={() => void trigger("refresh")}>立即刷新全部</button>
           <button className="btn" disabled={busy || data.paused || !data.subscriptions.some((s) => s.enabled && s.history_enabled)} onClick={() => void trigger("history")}>立即补全全部历史</button>
         </div>
-        <GlobalLimitForm key={`${data.global_limits?.refresh}-${data.global_limits?.history}`} limits={data.global_limits ?? { refresh: 20, history: 20 }} busy={busy} onSaved={load} />
+        <GlobalLimitForm limits={data.global_limits ?? { refresh: 20, history: 20 }} busy={busy} onSaved={load} />
         <p className="text-sm">每轮是一次完整触发批次，跨所有博主按成功完整帖子计数；归档重复不占额度，置顶帖同样占成功额度。超过总限额的已发现帖子保存在本地安全待办，延期至下轮优先处理，博主轮转执行。手动触发同样受限；批次运行时重复触发不会重置预算。不是网络请求上限：扫描、请求、时间仍各有独立预算，不保证每轮凑满。修改总限额从新批次生效。</p>
         {(data.batches ?? []).slice(0, 5).map((batch) => <p key={batch.id} className="text-sm">{batch.mode === "refresh" ? "追新" : "历史"}批次新增完成：{batch.completed} / {batch.post_limit} 帖</p>)}
         <p className="text-sm text-base-content/70">立即执行仍遵循订阅和模式开关；暂停时不能新触发。运行中的任务可在下方逐项取消。</p>

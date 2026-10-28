@@ -127,8 +127,12 @@ def profile_description_total(response: Any, username: str) -> int | None:
     for description in parser.descriptions:
         if not re.search(r"\(@" + re.escape(username) + r"\)", description, re.IGNORECASE):
             continue
-        match = re.search(
-            r"(?<!\S)([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s+posts\b",
+        # Only the statistics prefix is authoritative; names and biographies can
+        # contain arbitrary phrases such as "999 Posts about art".
+        metric = r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?[KMB]?"
+        match = re.match(
+            rf"\s*(?:{metric}\s+followers,\s*{metric}\s+following,\s*)?"
+            r"([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s+posts\s+-\s+",
             description,
             re.IGNORECASE,
         )

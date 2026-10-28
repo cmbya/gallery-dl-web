@@ -277,6 +277,56 @@ test('global budget form saves independent modes, explains deferred posts, and d
   } finally { await ui.close(); global.fetch = original; }
 });
 
+async function changeNumber(node, value) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(node, String(value));
+    node.dispatchEvent(new window.Event('input', { bubbles: true }));
+    node.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+}
+
+test('dashboard changed global limits retain the success message, form instance and save-button focus', async () => {
+  const original = global.fetch; let reads = 0; const writes = [];
+  const state = { subscriptions: [], runs: [], paused: false, cookie_check: null, global_limits: { refresh: 20, history: 20 } };
+  global.fetch = async (url, init) => {
+    if (init.method === 'GET') { reads++; return new Response(JSON.stringify(state)); }
+    assert.equal(url, '/api/automation/limits'); assert.equal(init.method, 'PATCH');
+    writes.push(JSON.parse(init.body)); state.global_limits = writes.at(-1);
+    return new Response(JSON.stringify(state.global_limits));
+  };
+  const ui = await mount('SubscriptionDashboard');
+  try {
+    const form = ui.container.querySelector('[aria-label="跨博主每轮新增总限额"]');
+    const save = form.querySelector('button[type=submit]');
+    await changeNumber(form.querySelector('[name=refresh]'), 21);
+    await act(async () => { save.focus(); save.click(); await tick(); });
+    assert.deepEqual(writes, [{ refresh: 21, history: 20 }]); assert.equal(reads, 2);
+    assert.match(ui.container.textContent, /已保存总限额，新批次生效/);
+    assert.equal(form.isConnected, true);
+    assert.equal(ui.container.querySelector('[aria-label="跨博主每轮新增总限额"]'), form);
+    assert.equal(document.activeElement, save);
+    assert.equal(form.querySelector('[name=refresh]').value, '21');
+  } finally { await ui.close(); global.fetch = original; }
+});
+
+test('dashboard synchronizes clean server limits without overwriting a valid local edit', async () => {
+  const original = global.fetch;
+  const state = { subscriptions: [], runs: [], paused: false, cookie_check: null, global_limits: { refresh: 20, history: 20 } };
+  global.fetch = async () => new Response(JSON.stringify(state));
+  const ui = await mount('SubscriptionDashboard');
+  try {
+    const form = ui.container.querySelector('[aria-label="跨博主每轮新增总限额"]');
+    const refresh = form.querySelector('[name=refresh]');
+    const history = form.querySelector('[name=history]');
+    await changeNumber(refresh, 25);
+    state.global_limits = { refresh: 30, history: 40 };
+    await act(async () => { [...ui.container.querySelectorAll('button')].find((b) => b.textContent === '刷新状态').click(); await tick(); });
+    assert.equal(form.isConnected, true);
+    assert.equal(refresh.value, '25');
+    assert.equal(history.value, '40');
+  } finally { await ui.close(); global.fetch = original; }
+});
+
 test('settings read errors remain visible rather than implying cookies are absent', async () => {
   const original = global.fetch; global.fetch = async () => { throw new Error('offline'); };
   const ui = await mount('CookieForm');

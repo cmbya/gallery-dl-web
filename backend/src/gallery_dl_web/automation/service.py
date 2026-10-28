@@ -65,11 +65,20 @@ class AutomationService:
         )
         if self.store.snapshot()["paused"]:
             return {"accepted": 0, "skipped": len(subscriptions), "paused": True}
-        # An in-flight trigger owns the mode's batch. Repeated manual/scheduler
-        # triggers cannot requeue an already-finished prefix with a fresh budget.
-        if self.store.active_batch(mode):
+        # Reuse interrupted ownership; a terminal prefix must never acquire a fresh budget.
+        batch_id = self.store.active_batch(mode)
+        members = self.store.batch_runs(batch_id) if batch_id else {}
+        if any(r["status"] in {"queued", "running"} for r in members.values()):
             return {"accepted": 0, "skipped": len(subscriptions), "paused": False}
-        batch_id = self.store.new_batch(mode)
+        if batch_id:
+            subscriptions = [
+                sub
+                for sub in subscriptions
+                if sub["username"] in members
+                and members[sub["username"]]["status"] in {"cancelled", "interrupted"}
+            ]
+        else:
+            batch_id = self.store.new_batch(mode)
         after = self.store.get_state(f"rotation_{mode}", "")
         subscriptions = sorted(
             subscriptions, key=lambda sub: (sub["username"] <= after, sub["username"])
@@ -252,6 +261,8 @@ class AutomationService:
         self.kick()
 
     async def check_cookies(self, username: str | None = None) -> dict[str, Any]:
+        if username is not None:
+            username = username.strip() or None
         if username is not None:
             username = normalize_username(username)
         else:
