@@ -102,6 +102,25 @@ class AutomationStore:
         """)
         self.db.commit()
 
+    def pacing(self) -> dict[str, dict[str, float]]:
+        from .pacing import DEFAULTS
+
+        value: dict[str, dict[str, float]] = self.get_state(
+            "pacing", {mode: dict(DEFAULTS) for mode in ("refresh", "history")}
+        )
+        return value
+
+    def set_pacing(self, fields: dict[str, Any]) -> dict[str, dict[str, float]]:
+        from .pacing import validate
+
+        value = self.pacing()
+        for mode, changes in fields.items():
+            if mode not in value:
+                raise ValueError("invalid pacing mode")
+            value[mode] = validate(changes, value[mode])
+        self.set_state("pacing", value)
+        return value
+
     def limits(self) -> dict[str, int]:
         value = self.get_state("global_limits", {"refresh": 20, "history": 20})
         return {"refresh": int(value["refresh"]), "history": int(value["history"])}
@@ -135,6 +154,8 @@ class AutomationStore:
         return result
 
     def active_batch(self, mode: str) -> str | None:
+        from .engine import GLOBAL_STOPS
+
         # Persist ownership even when the last member was cancelled or interrupted.
         # Falling back to the latest batch also upgrades databases created before this key.
         latest = self.db.execute(
@@ -153,7 +174,11 @@ class AutomationStore:
             if any(r["status"] in {"queued", "running"} for r in runs) or (
                 self.remaining(identifier) > 0
                 and any(
-                    r["status"] in {"cancelled", "interrupted"} and r["username"] in eligible
+                    (
+                        r["status"] in {"cancelled", "interrupted"}
+                        or (r["status"] == "stopped" and r.get("reason") in GLOBAL_STOPS)
+                    )
+                    and r["username"] in eligible
                     for r in runs
                 )
             ):
@@ -239,10 +264,10 @@ class AutomationStore:
             self.db.execute("INSERT OR REPLACE INTO state VALUES (?,?)", (key, json.dumps(value)))
 
     def pause(self, reason: str) -> None:
-        self.set_state("pause", {"paused": True, "pause_reason": reason})
+        self.set_state("pause", {"paused": True, "pause_reason": reason, "paused_at": time.time()})
 
     def resume(self) -> None:
-        self.set_state("pause", {"paused": False, "pause_reason": None})
+        self.set_state("pause", {"paused": False, "pause_reason": None, "paused_at": None})
 
     def subscriptions(self) -> list[dict[str, Any]]:
         result = []
@@ -574,5 +599,7 @@ class AutomationStore:
             "runs": self.runs(),
             "cookie_check": self.get_state("cookie_check"),
             "global_limits": self.limits(),
+            "pacing": self.pacing(),
+            "next_run_at": self.get_state("next_run_at", 0),
             "batches": self.batches(),
         }

@@ -6,6 +6,7 @@ import { isActiveRun, reasonLabel, statusLabel } from "@/lib/automation";
 import { AutomationResult } from "@/components/AutomationResult";
 import { ArchiveProgress } from "@/components/ArchiveProgress";
 import { CookieCheckPanel } from "@/components/CookieCheckPanel";
+import { AutomationPacingForm } from "@/components/AutomationPacingForm";
 import { GlobalLimitForm } from "@/components/GlobalLimitForm";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
 
@@ -89,11 +90,15 @@ export function SubscriptionDashboard() {
         <h2 id="global-title" className="card-title">全局控制</h2>
         <p>自动任务：<strong>{data.paused ? "已暂停" : "未暂停"}</strong></p>
         {data.pause_reason && <p className="text-sm break-words">暂停原因：{reasonLabel(data.pause_reason)}</p>}
+        {data.paused && data.paused_at ? <p className="text-sm">暂停时间：{new Date(data.paused_at * 1000).toLocaleString("zh-CN")}</p> : null}
         <div className="flex flex-wrap gap-2">
           <button className="btn btn-outline" disabled={busy} onClick={() => void act(() => data.paused ? resumeAutomation() : pauseAutomation("用户手动暂停"), data.paused ? "已恢复自动任务。" : "已暂停自动任务。")}>{data.paused ? "恢复全局任务" : "暂停全局任务"}</button>
           <button className="btn" disabled={busy || data.paused || !data.subscriptions.some((s) => s.enabled && s.refresh_enabled)} onClick={() => void trigger("refresh")}>立即刷新全部</button>
           <button className="btn" disabled={busy || data.paused || !data.subscriptions.some((s) => s.enabled && s.history_enabled)} onClick={() => void trigger("history")}>立即补全全部历史</button>
         </div>
+        {data.paused && <p role="alert">自动暂停期间不要重复手动测试。请先检查 Instagram；保存 Cookie、检查成功或重启均不会自动恢复。</p>}
+        {data.next_run_at && active ? <p>博主间隔最早允许时间：{new Date(data.next_run_at * 1000).toLocaleString("zh-CN")}（排队任务仍可取消）</p> : null}
+        {data.pacing && <AutomationPacingForm key={JSON.stringify(data.pacing)} pacing={data.pacing} busy={busy} onSaved={load} />}
         <GlobalLimitForm limits={data.global_limits ?? { refresh: 20, history: 20 }} busy={busy} onSaved={load} />
         <p className="text-sm">每轮是一次完整触发批次，跨所有博主按成功完整帖子计数；归档重复不占额度，置顶帖同样占成功额度。超过总限额的已发现帖子保存在本地安全待办，延期至下轮优先处理，博主轮转执行。手动触发同样受限；批次运行时重复触发不会重置预算。不是网络请求上限：扫描、请求、时间仍各有独立预算，不保证每轮凑满。修改总限额从新批次生效。</p>
         {(data.batches ?? []).slice(0, 5).map((batch) => <p key={batch.id} className="text-sm">{batch.mode === "refresh" ? "追新" : "历史"}批次新增完成：{batch.completed} / {batch.post_limit} 帖</p>)}

@@ -13,6 +13,7 @@ import requests
 from gallery_dl import config, extractor, job, output
 
 from .engine import Page, StopRound
+from .pacing import DEFAULTS, Pacer
 from .query_cache import QueryCache
 from .store import safe_component
 
@@ -149,13 +150,15 @@ class GalleryBackend:
         request_budget: int = 100,
         timeout: float = 30,
         query_cache_path: Path | None = None,
+        pacing: dict[str, float] | None = None,
     ) -> None:
         config.clear()
         config.set(("cache",), "file", ":memory:")
         config.set(("extractor",), "cookies", cookies or {})
         config.set(("extractor",), "retries", 0)
         config.set(("extractor",), "timeout", min(timeout, 60))
-        config.set(("extractor",), "sleep-request", 1)
+        config.set(("extractor",), "sleep-request", 0)
+        config.set(("extractor",), "sleep", 0)
         config.set(("extractor",), "sleep-429", 0)
         config.set(("extractor",), "browser", None)
         config.set(("extractor", "instagram"), "videos", "original")
@@ -165,8 +168,10 @@ class GalleryBackend:
         self.downloads = downloads
         self.query_cache = QueryCache(query_cache_path) if query_cache_path is not None else None
         self.remaining = request_budget
+        self.pacer = Pacer(pacing if pacing is not None else DEFAULTS)
         self.extr: Any = None
         self.last_diagnostic: dict[str, Any] | None = None
+        self.stopped: StopRound | None = None
         self.observe_user: Callable[[str, int], None] | None = None
 
     def initialize(self, username: str) -> Any:
@@ -199,6 +204,9 @@ class GalleryBackend:
         return self.extr
 
     def guard(self, extr: Any) -> None:
+        if getattr(extr.session, "_automation_guarded", False):
+            return
+        extr.session._automation_guarded = True
         original = extr.session.send
 
         def send(request: Any, **kwargs: Any) -> Any:
@@ -210,6 +218,7 @@ class GalleryBackend:
             for hop in range(4):
                 if self.remaining <= 0:
                     raise StopRound("request_budget", {"stage": endpoint(request.url)})
+                self.pacer.send(media=bool(kwargs.get("stream")))
                 self.remaining -= 1
                 response = original(request, **kwargs)
                 self.last_diagnostic = {
@@ -259,7 +268,18 @@ class GalleryBackend:
                 return response
             raise StopRound("redirect_limit")
 
-        extr.session.send = send
+        def guarded_send(request: Any, **kwargs: Any) -> Any:
+            # HttpDownloader catches Exception around session.request. Latch the
+            # stop so that swallowed control exceptions cannot permit later sends.
+            if self.stopped is not None:
+                raise self.stopped
+            try:
+                return send(request, **kwargs)
+            except StopRound as exc:
+                self.stopped = exc
+                raise
+
+        extr.session.send = guarded_send
 
     def page(self, username: str, cursor: str | None) -> Page:
         extr = self.initialize(username)
@@ -368,6 +388,8 @@ class GalleryBackend:
         if target.exists() and any(path.is_symlink() for path in target.iterdir()):
             raise StopRound("unsafe_output_path")
 
+        backend = self
+
         class DurableDownload(job.DownloadJob):  # type: ignore[misc]
             hooks: Any
 
@@ -391,12 +413,16 @@ class GalleryBackend:
                     super().handle_url(url, kwdict)
                 finally:
                     self.hooks["after"].remove(after)
+                if backend.stopped is not None:
+                    raise backend.stopped
                 # Only the after-finalize hook is durable evidence, never prepare/file/skip.
                 if finalized:
                     success(media)
 
         download = DurableDownload(child)
         download.run()
+        if self.stopped is not None:
+            raise self.stopped
         return bool(expected) and all(done(media) for media in expected)
 
     def check(self, username: str | None) -> dict[str, Any]:
@@ -433,6 +459,9 @@ class GalleryBackend:
         except StopRound as exc:
             result["reason"] = exc.reason
             result["diagnostic"] = exc.diagnostic
+            if exc.reason == "redirect_home":
+                # Identity endpoint alone is inconclusive; allow the posts probe.
+                self.stopped = None
             if exc.reason != "redirect_home":
                 if exc.reason == "invalid_session":
                     result["login_status"] = "login_required"

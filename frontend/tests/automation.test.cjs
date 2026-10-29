@@ -39,6 +39,41 @@ async function mount(name, props) {
 function submit(container) { container.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); }
 const input = { username: '@Example', enabled: true, refresh_enabled: true, refresh_limit: 20, history_enabled: true, history_limit: 100 };
 
+test('automation pacing form exposes labeled independent defaults and saves only its API', async () => {
+  const values = { request_min: 5, request_max: 10, media_interval: 3, blogger_min: 60, blogger_max: 120 };
+  const pacing = { refresh: { ...values }, history: { ...values } };
+  const original = api.updateAutomationPacing;
+  let saved; let refreshed = 0;
+  api.updateAutomationPacing = async (body) => { saved = body; return body; };
+  const ui = await mount('AutomationPacingForm', { pacing, busy: false, onSaved: async () => { refreshed++; } });
+  try {
+    assert.equal(ui.container.querySelectorAll('label input').length, 10);
+    assert.equal(ui.container.querySelectorAll('fieldset').length, 2);
+    assert.match(ui.container.textContent, /不保证避免限制/);
+    await act(async () => { submit(ui.container); await tick(); });
+    assert.deepEqual(saved, pacing); assert.equal(refreshed, 1);
+    assert.match(ui.container.textContent, /下一任务生效/);
+  } finally { await ui.close(); api.updateAutomationPacing = original; }
+});
+
+test('paused dashboard shows persisted time and sanitized diagnostics in actual DOM', async () => {
+  const original = api.getAutomation;
+  const pausedAt = 1800000000;
+  api.getAutomation = async () => ({
+    subscriptions: [], paused: true, pause_reason: 'rate_limited', paused_at: pausedAt,
+    cookie_check: null,
+    runs: [{ id: 'paused-run', username: 'alice', mode: 'refresh', status: 'stopped', checked: 0, completed: 0, skipped: 0, failed: 0,
+      diagnostic: { stage: 'graphql', status: 429, target: 'https://private.invalid/?token=SECRET', classification: 'SECRET', cookie: 'SECRET' } }],
+  });
+  const ui = await mount('SubscriptionDashboard', {});
+  try {
+    assert.match(ui.container.textContent, /暂停时间：/);
+    assert.ok(ui.container.textContent.includes(new Date(pausedAt * 1000).toLocaleString('zh-CN')));
+    assert.match(ui.container.textContent, /帖子查询接口 · HTTP 429 → 未知端点/);
+    assert.doesNotMatch(ui.container.innerHTML, /SECRET|private\.invalid/);
+  } finally { await ui.close(); api.getAutomation = original; }
+});
+
 test('recent runs paginate ten at a time and clamp after a refresh without deleting records', async () => {
   const runs = Array.from({ length: 23 }, (_, i) => ({ id: `run-${i}`, username: `user${i}`, mode: 'refresh', status: 'completed', checked: 1, completed: 1, skipped: 0, failed: 0 }));
   let state = { subscriptions: [], paused: false, runs, cookie_check: null };

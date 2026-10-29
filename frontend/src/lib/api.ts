@@ -63,12 +63,17 @@ export interface AutomationBatch {
   completed: number;
   created_at: number;
 }
+export interface AutomationPacingValues { request_min: number; request_max: number; media_interval: number; blogger_min: number; blogger_max: number; }
+export type AutomationPacing = Record<AutomationMode, AutomationPacingValues>;
 export interface AutomationState {
+  pacing?: AutomationPacing;
+  next_run_at?: number;
   global_limits: GlobalLimits;
   batches: AutomationBatch[];
   subscriptions: Subscription[];
   paused: boolean;
   pause_reason: string | null;
+  paused_at?: number | null;
   runs: AutomationRun[];
   cookie_check: CookieCheck | null;
 }
@@ -82,6 +87,7 @@ async function automationRequest<T>(path: string, method = "GET", body?: unknown
   return response.json() as Promise<T>;
 }
 export const updateGlobalLimits = (input: GlobalLimits) => automationRequest<GlobalLimits>("/limits", "PATCH", input);
+export const updateAutomationPacing = (input: AutomationPacing) => automationRequest<AutomationPacing>("/pacing", "PATCH", input);
 export const getAutomation = () => automationRequest<AutomationState>("");
 export const addSubscription = (input: SubscriptionInput) => automationRequest<Subscription>("/subscriptions", "POST", input);
 export const updateSubscription = (id: string, input: Partial<SubscriptionInput>) => automationRequest<Subscription>(`/subscriptions/${encodeURIComponent(id)}`, "PATCH", input);

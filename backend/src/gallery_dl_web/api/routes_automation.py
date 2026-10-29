@@ -76,6 +76,14 @@ class GlobalLimits(BaseModel):
     history: int | None = Field(default=None, ge=1, strict=True)
 
 
+@router.patch("/pacing")
+async def update_pacing(body: dict[str, Any], request: Request) -> dict[str, Any]:
+    try:
+        return service(request).store.set_pacing(body)
+    except ValueError as exc:
+        raise error(exc) from None
+
+
 @router.patch("/limits")
 async def update_limits(body: GlobalLimits, request: Request) -> dict[str, int]:
     fields = body.model_dump(exclude_unset=True)

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import random
 import sys
 import time
 from collections.abc import Awaitable, Callable
@@ -75,7 +76,13 @@ class AutomationService:
                 sub
                 for sub in subscriptions
                 if sub["username"] in members
-                and members[sub["username"]]["status"] in {"cancelled", "interrupted"}
+                and (
+                    members[sub["username"]]["status"] in {"cancelled", "interrupted"}
+                    or (
+                        members[sub["username"]]["status"] == "stopped"
+                        and members[sub["username"]].get("reason") in GLOBAL_STOPS
+                    )
+                )
             ]
         else:
             batch_id = self.store.new_batch(mode)
@@ -107,6 +114,21 @@ class AutomationService:
         self.kick()
         return {"accepted": accepted, "skipped": skipped, "paused": False}
 
+    async def _wait_interval(self, run: dict[str, Any]) -> None:
+        # Persist wall time across restart, but cap backwards-clock waits monotonically.
+        delay = min(1800.0, max(0.0, self.store.get_state("next_run_at", 0) - time.time()))
+        deadline = time.monotonic() + delay
+        if delay:
+            self.store.update_run(
+                run, waiting_reason="blogger_interval", next_run_at=time.time() + delay
+            )
+        while time.monotonic() < deadline:
+            if self.closed or self.store.snapshot()["paused"]:
+                return
+            if not any(r["id"] == run["id"] for r in self.store.queued()):
+                return
+            await asyncio.sleep(min(0.25, deadline - time.monotonic()))
+
     async def _drain(self) -> None:
         while not self.closed and not self.store.snapshot()["paused"]:
             queue = self.store.queued()
@@ -121,6 +143,7 @@ class AutomationService:
                     run, status="cancelled", reason="subscription_disabled_or_deleted"
                 )
                 continue
+            await self._wait_interval(run)
             async with self.instagram_lock:
                 if self.closed or self.store.snapshot()["paused"]:
                     return
@@ -128,12 +151,23 @@ class AutomationService:
                 latest = next((r for r in self.store.runs() if r["id"] == run["id"]), None)
                 if latest is None or latest["status"] != "queued":
                     continue
+                sub = next(
+                    (s for s in self.store.subscriptions() if s["username"] == run["username"]),
+                    None,
+                )
+                if sub is None or not sub["enabled"] or not sub[f"{run['mode']}_enabled"]:
+                    self.store.update_run(
+                        run, status="cancelled", reason="subscription_disabled_or_deleted"
+                    )
+                    continue
                 if self.store.remaining(run.get("batch_id")) <= 0:
                     self.store.update_run(run, status="stopped", reason="global_post_limit")
                     continue
                 self.current = run["id"]
                 self.store.set_state(f"rotation_{run['mode']}", run["username"])
-                self.store.update_run(run, status="running")
+                pacing = self.store.pacing()[run["mode"]]
+                run["pacing"] = pacing
+                self.store.update_run(run, status="running", waiting_reason=None, next_run_at=None)
                 try:
                     result = await self.runner(run, sub)
                     self.store.update_run(run, **result)
@@ -149,6 +183,10 @@ class AutomationService:
                 except Exception:
                     self.store.update_run(run, status="failed", reason="runner_error")
                 finally:
+                    self.store.set_state(
+                        "next_run_at",
+                        time.time() + random.uniform(pacing["blogger_min"], pacing["blogger_max"]),
+                    )
                     if run.get("batch_id"):
                         self.store.update_run(run, completed=self.store.run_completed(run["id"]))
                     self.current = None
@@ -230,6 +268,7 @@ class AutomationService:
                 "subscription": subscription,
                 "batch_id": run.get("batch_id"),
                 "run_id": run["id"],
+                "pacing": run.get("pacing", self.store.pacing()[run["mode"]]),
             }
         )
 
@@ -255,6 +294,10 @@ class AutomationService:
         self.store.pause(reason)
         if self.current:
             await self.cancel(self.current)
+        elif self.task and not self.task.done():
+            self.task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.task
 
     async def resume(self) -> None:
         self.store.resume()
@@ -307,8 +350,13 @@ class AutomationService:
                 "reason": result.get("reason"),
                 "diagnostic": result.get("diagnostic"),
             }
-            if result.get("reason") in GLOBAL_STOPS:
-                self.store.pause(result["reason"])
+            identity_home = (
+                result.get("reason") == "redirect_home"
+                and (result.get("diagnostic") or {}).get("stage") == "identity"
+                and result.get("posts_status") in {"accessible", "not_tested"}
+            )
+            if result.get("reason") in GLOBAL_STOPS and not identity_home:
+                await self.pause(result["reason"])
         result["tested_username"] = username
         result["checked_at"] = now
         if generation != self.cookie_generation:

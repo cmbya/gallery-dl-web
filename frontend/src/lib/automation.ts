@@ -70,7 +70,7 @@ const reasons: Record<string, string> = {
   server_shutdown: "服务关闭，任务已中断", server_restarted: "服务重启，任务已中断",
   subscription_disabled_or_deleted: "订阅已停用或删除", cookies_changed: "Cookie 已更改，请重新检查",
 };
-export function reasonLabel(value: string): string { return reasons[value] ?? (/^[a-z][a-z0-9_]*$/.test(value) ? "服务返回未识别的原因，请查看服务日志" : value); }
+export function reasonLabel(value: string): string { if (["redirect_home", "redirect_login", "redirect_challenge", "redirect_unsupported"].includes(value)) return `异常跳转，疑似限制（尚未确认风控）：${reasons[value]}`; return reasons[value] ?? (/^[a-z][a-z0-9_]*$/.test(value) ? "服务返回未识别的原因，请查看服务日志" : value); }
 export function statusLabel(value?: string | null): string { return value ? labels[value] ?? "未知状态" : "尚无结果"; }
 export function isActiveRun(status: string): boolean { return ["queued", "pending", "running"].includes(status); }
 export function formatTime(value?: string | number | null): string {

@@ -10,7 +10,17 @@ from gallery_dl.exception import TerminateExtraction
 
 from .store import AutomationStore, post_folder
 
-GLOBAL_STOPS = frozenset({"rate_limited", "challenge", "invalid_session"})
+GLOBAL_STOPS = frozenset(
+    {
+        "rate_limited",
+        "challenge",
+        "invalid_session",
+        "redirect_home",
+        "redirect_login",
+        "redirect_challenge",
+        "redirect_unsupported",
+    }
+)
 
 
 class StopRound(TerminateExtraction):  # type: ignore[misc]

@@ -29,6 +29,7 @@ def _execute(payload: dict[str, Any]) -> dict[str, Any]:
         payload["request_budget"],
         payload["timeout"],
         query_cache_path=Path(payload["database"]).parent / "instagram-query-cache.json",
+        pacing=payload.get("pacing"),
     )
     if payload.get("operation") == "check":
         try:

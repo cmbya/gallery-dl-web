@@ -191,6 +191,8 @@ def test_api_contract_and_cookie_invalidation(tmp_path):
             "runs",
             "cookie_check",
             "global_limits",
+            "pacing",
+            "next_run_at",
             "batches",
         }
         result = client.post(

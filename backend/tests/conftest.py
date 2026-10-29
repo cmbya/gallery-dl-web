@@ -15,6 +15,25 @@ from gallery_dl_web.config import Settings
 from gallery_dl_web.cookies.store import CookieStore
 from gallery_dl_web.jobs.manager import JobManager
 
+
+@pytest.fixture(autouse=True)
+def automation_no_wall_wait(monkeypatch, request):
+    """Legacy regressions run offline without introducing minute-long pacing waits.
+
+    Pacing tests use their own observable fake clocks and exercise the real wiring.
+    """
+    if request.node.path.name.startswith("test_automation_pacing"):
+        return
+    from gallery_dl_web.automation.pacing import Pacer
+    from gallery_dl_web.automation.service import AutomationService
+
+    async def elapsed(self, run):
+        self.store.set_state("next_run_at", 0)
+
+    monkeypatch.setattr(AutomationService, "_wait_interval", elapsed)
+    monkeypatch.setattr(Pacer, "send", lambda self, media=False: None)
+
+
 # A representative valid Facebook Netscape cookie block (c_user + xs = a real session).
 FB_NETSCAPE = "\n".join(
     [
